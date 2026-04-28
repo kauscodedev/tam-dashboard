@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useDashboardData } from '@/hooks/useDashboardData'
 import { useSyncStatus } from '@/hooks/useSyncStatus'
 import { useFilters } from '@/hooks/useFilters'
@@ -9,7 +10,7 @@ import { CrossTabTable } from '@/components/CrossTabTable'
 import { FilterBar } from '@/components/FilterBar'
 import { SyncStatusBanner } from '@/components/SyncStatusBanner'
 
-export default function Dashboard() {
+function DashboardContent() {
   const { data, loading, error } = useDashboardData()
   const { status } = useSyncStatus()
   const { filteredData, filters, setFilter } = useFilters(data)
@@ -143,5 +144,13 @@ export default function Dashboard() {
 
       <CrossTabTable matrix={stateTeamMatrix} />
     </div>
+  )
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={<div className="p-6"><div className="text-2xl font-bold mb-6">TAM Distribution Dashboard</div><div className="text-gray-400">Loading...</div></div>}>
+      <DashboardContent />
+    </Suspense>
   )
 }

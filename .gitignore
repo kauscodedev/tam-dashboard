@@ -21,3 +21,5 @@ coverage/
 
 # Script outputs
 dist-scripts/
+.vercel
+.env*.local
