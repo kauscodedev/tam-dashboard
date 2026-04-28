@@ -1,0 +1,7 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/sync-status/route": "app/api/sync-status/route.js",
+  "/api/trigger-sync/route": "app/api/trigger-sync/route.js",
+  "/api/data/route": "app/api/data/route.js",
+  "/page": "app/page.js"
+}
