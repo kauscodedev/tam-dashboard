@@ -1,0 +1,23 @@
+# Environment variables
+.env.local
+.env.*.local
+
+# Next.js
+.next/
+out/
+dist/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Misc
+.DS_Store
+*.log
+
+# Script outputs
+dist-scripts/
