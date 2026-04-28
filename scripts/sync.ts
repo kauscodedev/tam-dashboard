@@ -38,16 +38,18 @@ if (!process.env.HUBSPOT_PAT) {
 
 async function writeStatus(status: SyncStatus): Promise<void> {
   await put('sync-status.json', JSON.stringify(status), {
+    access: 'public',
     token: BLOB_TOKEN!,
     addRandomSuffix: false,
-  } as any);
+  });
 }
 
 async function writeData(data: AggregatedData): Promise<void> {
   await put('tam-data.json', JSON.stringify(data), {
+    access: 'public',
     token: BLOB_TOKEN!,
     addRandomSuffix: false,
-  } as any);
+  });
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
