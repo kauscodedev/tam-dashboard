@@ -38,19 +38,17 @@ if (!process.env.HUBSPOT_PAT) {
 
 async function writeStatus(status: SyncStatus): Promise<void> {
   await put('sync-status.json', JSON.stringify(status), {
-    access: 'public', // status has no sensitive data
+    access: 'public' as const,
     token: BLOB_TOKEN!,
-    addRandomSuffix: false, // always overwrite same key
-    allowOverwrite: true,
+    addRandomSuffix: false,
   });
 }
 
 async function writeData(data: AggregatedData): Promise<void> {
   await put('tam-data.json', JSON.stringify(data), {
-    access: 'private', // TAM data is confidential
+    access: 'private' as const,
     token: BLOB_TOKEN!,
     addRandomSuffix: false,
-    allowOverwrite: true,
   });
 }
 
