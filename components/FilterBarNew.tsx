@@ -1,129 +1,168 @@
 'use client'
 
-import { FilterState, AggregatedData } from '@/types/dashboard'
-import { Card } from '@/components/ui/card'
+import { AggregatedData, FilterState } from '@/types/dashboard'
 import { Button } from '@/components/ui/button'
-import { Filter, RotateCw } from 'lucide-react'
+import { RotateCw, SlidersHorizontal, X } from 'lucide-react'
+
+type FilterKey = keyof FilterState
+
+type FilterConfig = {
+  key: FilterKey
+  label: string
+  allLabel: string
+  options: string[]
+  optionLabels?: string[]
+}
 
 export function FilterBar({
   filters,
   setFilter,
+  resetFilters,
   filterOptions,
   onRefresh,
   syncing,
 }: {
   filters: FilterState
   setFilter: (key: keyof FilterState, value: string | null) => void
+  resetFilters: () => void
   filterOptions: AggregatedData['filterOptions']
   onRefresh: () => void
   syncing: boolean
 }) {
-  const hasActiveFilters =
-    filters.orgTier || filters.teamId || filters.dmsName
+  const filterConfigs: FilterConfig[] = [
+    {
+      key: 'orgTier',
+      label: 'Org Tier',
+      allLabel: 'All tiers',
+      options: filterOptions.orgTiers ?? [],
+    },
+    {
+      key: 'dealershipType',
+      label: 'Dealership Type',
+      allLabel: 'All types',
+      options: filterOptions.dealershipTypes ?? [],
+    },
+    {
+      key: 'teamId',
+      label: 'Team',
+      allLabel: 'All teams',
+      options: filterOptions.teamIds ?? [],
+      optionLabels: filterOptions.teamNames ?? [],
+    },
+    {
+      key: 'state',
+      label: 'State',
+      allLabel: 'All states',
+      options: filterOptions.states ?? [],
+    },
+    {
+      key: 'crmPlatform',
+      label: 'CRM',
+      allLabel: 'All CRMs',
+      options: filterOptions.crmPlatforms ?? [],
+    },
+    {
+      key: 'dmsName',
+      label: 'DMS',
+      allLabel: 'All DMS',
+      options: filterOptions.dmsNames ?? [],
+    },
+    {
+      key: 'lifecycleStage',
+      label: 'Lifecycle',
+      allLabel: 'All stages',
+      options: filterOptions.lifecycleStages ?? [],
+      optionLabels: filterOptions.lifecycleStageNames ?? [],
+    },
+  ]
+
+  const activeFilters = filterConfigs
+    .map((config) => {
+      const value = filters[config.key]
+      if (!value) return null
+      const idx = config.options.indexOf(value)
+      return {
+        key: config.key,
+        label: config.label,
+        value: config.optionLabels?.[idx] ?? value,
+      }
+    })
+    .filter((filter): filter is { key: FilterKey; label: string; value: string } => Boolean(filter))
 
   return (
-    <Card className="mb-6">
-      <div className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-4 h-4 text-gray-400" />
-          <h3 className="text-sm font-bold text-gray-100 uppercase tracking-wider">
-            Filters
-          </h3>
-          {hasActiveFilters && (
-            <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-              {[filters.orgTier, filters.teamId, filters.dmsName].filter(
-                Boolean
-              ).length} active
-            </span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div>
-            <label className="text-xs text-gray-400 font-medium block mb-2">
-              Org Tier
-            </label>
-            <select
-              value={filters.orgTier || ''}
-              onChange={(e) =>
-                setFilter('orgTier', e.target.value || null)
-              }
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-sm text-gray-100 rounded hover:bg-gray-700 focus:outline-none focus:border-blue-500 transition-colors"
-            >
-              <option value="">All Tiers</option>
-              {filterOptions.orgTiers.map((tier) => (
-                <option key={tier} value={tier}>
-                  {tier}
-                </option>
-              ))}
-            </select>
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-900 text-white">
+              <SlidersHorizontal className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-950">Executive filters</p>
+              <p className="text-xs text-slate-500">
+                Filters recalculate every report locally
+              </p>
+            </div>
           </div>
 
-          <div>
-            <label className="text-xs text-gray-400 font-medium block mb-2">
-              Team
-            </label>
-            <select
-              value={filters.teamId || ''}
-              onChange={(e) =>
-                setFilter('teamId', e.target.value || null)
-              }
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-sm text-gray-100 rounded hover:bg-gray-700 focus:outline-none focus:border-blue-500 transition-colors"
-            >
-              <option value="">All Teams</option>
-              {filterOptions.teamIds.map((id, idx) => (
-                <option key={id} value={id}>
-                  {filterOptions.teamNames[idx]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-400 font-medium block mb-2">
-              DMS Name
-            </label>
-            <select
-              value={filters.dmsName || ''}
-              onChange={(e) =>
-                setFilter('dmsName', e.target.value || null)
-              }
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-sm text-gray-100 rounded hover:bg-gray-700 focus:outline-none focus:border-blue-500 transition-colors"
-            >
-              <option value="">All DMS</option>
-              {filterOptions.dmsNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-end gap-2">
+          <div className="flex items-center gap-2">
+            {activeFilters.length > 0 && (
+              <Button variant="outline" size="sm" onClick={resetFilters}>
+                Clear all
+              </Button>
+            )}
             <Button
               onClick={onRefresh}
               disabled={syncing}
-              className="w-full flex items-center justify-center gap-2"
+              size="sm"
+              className="gap-2"
             >
-              <RotateCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Refresh'}
+              <RotateCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing' : 'Refresh data'}
             </Button>
-            {hasActiveFilters && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setFilter('orgTier', null)
-                  setFilter('teamId', null)
-                  setFilter('dmsName', null)
-                }}
-                className="px-3"
-              >
-                Reset
-              </Button>
-            )}
           </div>
         </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+          {filterConfigs.map((config) => (
+            <label key={config.key} className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {config.label}
+              </span>
+              <select
+                value={filters[config.key] ?? ''}
+                onChange={(event) =>
+                  setFilter(config.key, event.target.value || null)
+                }
+                className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="">{config.allLabel}</option>
+                {config.options.map((option, index) => (
+                  <option key={option} value={option}>
+                    {config.optionLabels?.[index] ?? option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+
+        {activeFilters.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {activeFilters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setFilter(filter.key, null)}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 text-xs font-medium text-blue-800 shadow-none hover:bg-blue-100"
+              >
+                {filter.label}: {filter.value}
+                <X className="h-3 w-3" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-    </Card>
+    </section>
   )
 }

@@ -14,35 +14,35 @@ export function SyncStatusBanner({ status }: { status: SyncStatus }) {
         : 0
 
     return (
-      <Card className="border-blue-700 bg-gradient-to-r from-blue-950 to-blue-900 mb-6">
+      <Card className="mb-6 border-blue-200 bg-blue-50">
         <CardContent className="pt-4">
           <div className="flex items-center gap-2 mb-3">
-            <Zap className="w-4 h-4 text-blue-400 animate-pulse" />
-            <p className="text-sm font-bold text-blue-200">
+            <Zap className="w-4 h-4 text-blue-700 animate-pulse" />
+            <p className="text-sm font-bold text-blue-900">
               Syncing... {status.records_fetched?.toLocaleString()} /{' '}
               {status.estimated?.toLocaleString()} records
             </p>
           </div>
-          <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden mb-2">
+          <div className="w-full bg-white h-2 rounded-full overflow-hidden mb-2">
             <div
-              className="bg-gradient-to-r from-blue-500 to-blue-400 h-full transition-all duration-300"
+              className="bg-blue-600 h-full transition-all duration-300"
               style={{ width: `${percentage}%` }}
             />
           </div>
-          <p className="text-xs text-blue-100">{percentage}% complete</p>
+          <p className="text-xs text-blue-700">{percentage}% complete</p>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card className="border-red-700 bg-gradient-to-r from-red-950 to-red-900 mb-6">
+    <Card className="border-red-200 bg-red-50 mb-6">
       <CardContent className="pt-4">
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-red-700 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-bold text-red-200">Sync Error</p>
-            <p className="text-sm text-red-100 mt-1">
+            <p className="text-sm font-bold text-red-900">Sync Error</p>
+            <p className="text-sm text-red-700 mt-1">
               {status.error || 'Unknown error'}
             </p>
           </div>

@@ -241,6 +241,13 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
           allRecords.map((r) => r.dn).filter((v): v is string => v !== null)
         ),
       ].sort(),
+      dealershipTypes: [...rtByDealerType.keys()].filter((k) => k !== '(No value)').sort(),
+      states: [...rtByState.keys()].filter((k) => k !== '(No value)').sort(),
+      crmPlatforms: [...rtByCrm.keys()].filter((k) => k !== '(No value)').sort(),
+      lifecycleStages: [...rtByLifecycle.keys()].filter((k) => k !== '(No value)'),
+      lifecycleStageNames: [...rtByLifecycle.keys()]
+        .filter((k) => k !== '(No value)')
+        .map(resolveLifecycle),
     },
   };
 }

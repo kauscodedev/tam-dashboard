@@ -9,6 +9,10 @@ export function useFilters(data: AggregatedData | null) {
     orgTier: null,
     teamId: null,
     dmsName: null,
+    dealershipType: null,
+    state: null,
+    crmPlatform: null,
+    lifecycleStage: null,
   })
 
   const filteredData = useMemo(() => {
@@ -20,5 +24,17 @@ export function useFilters(data: AggregatedData | null) {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
-  return { filteredData, filters, setFilter }
+  const resetFilters = () => {
+    setFilters({
+      orgTier: null,
+      teamId: null,
+      dmsName: null,
+      dealershipType: null,
+      state: null,
+      crmPlatform: null,
+      lifecycleStage: null,
+    })
+  }
+
+  return { filteredData, filters, setFilter, resetFilters }
 }

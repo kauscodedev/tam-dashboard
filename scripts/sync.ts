@@ -10,7 +10,7 @@
  *   2. Fetch property metadata (LabelMap) from HubSpot
  *   3. Fetch ALL company records via paginated List API (~168K records, ~1-2 min)
  *   4. Aggregate records → AggregatedData (O(n) single pass)
- *   5. Write tam-data.json (private) to Blob
+ *   5. Write tam-data.json to Blob
  *   6. Write sync-status.json = { status: 'success', ... } to Blob
  *
  * Environment variables required:
@@ -112,8 +112,10 @@ async function main(): Promise<void> {
       );
     }
 
-    // Step 5: Upload aggregated data (private blob)
-    console.log('[Sync] Uploading tam-data.json to Vercel Blob (private)...');
+    // Step 5: Upload aggregated data.
+    // @vercel/blob 0.27 only supports public blob access; /api/data still
+    // enforces the dashboard secret before returning the blob contents.
+    console.log('[Sync] Uploading tam-data.json to Vercel Blob...');
     await writeData(aggregated);
 
     // Step 6: Mark success

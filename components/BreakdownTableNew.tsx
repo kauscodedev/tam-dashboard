@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { GroupRow } from '@/types/dashboard'
 import { ChevronDown, Search } from 'lucide-react'
 
@@ -8,159 +8,112 @@ export function BreakdownTable({
   title,
   rows,
   showCompanies = true,
+  maxRows = 8,
 }: {
   title: string
   rows: GroupRow[]
   showCompanies?: boolean
+  maxRows?: number
 }) {
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [searchTerm, setSearchTerm] = useState('')
+  const [expanded, setExpanded] = useState(false)
+
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (acc, row) => ({
+          rooftops: acc.rooftops + row.rooftops,
+          companies: acc.companies + row.companies,
+        }),
+        { rooftops: 0, companies: 0 }
+      ),
+    [rows]
+  )
 
   const filteredRows = rows.filter((row) =>
     row.label.toLowerCase().includes(searchTerm.toLowerCase())
   )
-
-  const toggleRow = (label: string) => {
-    const newExpanded = new Set(expandedRows)
-    if (newExpanded.has(label)) {
-      newExpanded.delete(label)
-    } else {
-      newExpanded.add(label)
-    }
-    setExpandedRows(newExpanded)
-  }
+  const visibleRows = expanded ? filteredRows : filteredRows.slice(0, maxRows)
 
   return (
-    <div className="card">
-      <div style={{ padding: '20px', borderBottom: '1px solid rgba(99, 102, 241, 0.2)' }}>
-        <h3 style={{
-          fontSize: '1rem',
-          fontWeight: '700',
-          background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          marginBottom: '16px',
-        }}>{title}</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15, 23, 42, 0.8)', borderRadius: '8px', padding: '8px 12px' }}>
-          <Search style={{ width: '16px', height: '16px', color: '#64748b' }} />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ background: 'transparent', fontSize: '0.875rem', color: '#e0e7ff', outline: 'none', flex: 1, border: 'none' }}
-          />
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {rows.length.toLocaleString()} rows · {totals.rooftops.toLocaleString()} rooftops
+            </p>
+          </div>
+          <div className="flex h-9 min-w-[180px] items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-900 shadow-none outline-none placeholder:text-slate-400"
+            />
+          </div>
         </div>
       </div>
-      <div style={{ padding: 0 }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700 bg-gray-800">
-                <th className="text-left px-4 py-3 font-bold text-gray-200">
-                  Label
-                </th>
-                <th className="text-right px-4 py-3 font-bold text-gray-200">
-                  Rooftops
-                </th>
-                {showCompanies && (
-                  <th className="text-right px-4 py-3 font-bold text-gray-200">
-                    Companies
-                  </th>
-                )}
-                <th className="w-10" />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((row, idx) => (
-                <tbody key={row.label}>
-                  <tr
-                    className={`border-b border-gray-700 hover:bg-gray-800 transition-colors cursor-pointer ${
-                      idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-850'
-                    }`}
-                    onClick={() => toggleRow(row.label)}
-                  >
-                    <td className="text-left px-4 py-3 text-gray-100 font-medium">
-                      {row.label}
-                    </td>
-                    <td className="text-right px-4 py-3 text-gray-100 font-semibold">
-                      {row.rooftops.toLocaleString()}
-                    </td>
-                    {showCompanies && (
-                      <td className="text-right px-4 py-3 text-gray-100 font-semibold">
-                        {row.companies.toLocaleString()}
-                      </td>
-                    )}
-                    <td className="px-4 py-3 text-center">
-                      <ChevronDown
-                        className={`w-4 h-4 text-gray-400 transition-transform ${
-                          expandedRows.has(row.label) ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </td>
-                  </tr>
 
-                  {expandedRows.has(row.label) && (
-                    <tr className="bg-gray-800 border-b border-gray-700">
-                      <td colSpan={showCompanies ? 4 : 3} className="px-4 py-4">
-                        <div className="space-y-3 text-sm">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-gray-900 rounded p-3">
-                              <p className="text-gray-400 text-xs font-medium">
-                                ROOFTOPS
-                              </p>
-                              <p className="text-2xl font-bold text-white mt-1">
-                                {row.rooftops.toLocaleString()}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-2">
-                                {(
-                                  (row.rooftops /
-                                    rows.reduce((sum, r) => sum + r.rooftops, 0)) *
-                                  100
-                                ).toFixed(1)}
-                                % of total
-                              </p>
-                            </div>
-                            {showCompanies && (
-                              <div className="bg-gray-900 rounded p-3">
-                                <p className="text-gray-400 text-xs font-medium">
-                                  COMPANIES
-                                </p>
-                                <p className="text-2xl font-bold text-white mt-1">
-                                  {row.companies.toLocaleString()}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-2">
-                                  {(
-                                    (row.companies /
-                                      rows.reduce(
-                                        (sum, r) => sum + r.companies,
-                                        0
-                                      )) *
-                                    100
-                                  ).toFixed(1)}
-                                  % of total
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                          <div className="bg-gray-900 rounded p-3">
-                            <p className="text-gray-400 text-xs font-medium">
-                              AVG ROOFTOPS PER COMPANY
-                            </p>
-                            <p className="text-xl font-bold text-white mt-1">
-                              {(row.rooftops / row.companies).toFixed(1)}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="min-w-[180px] text-left">Segment</th>
+              <th className="text-right">Rooftops</th>
+              {showCompanies && <th className="text-right">Companies</th>}
+              <th className="text-right">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => {
+              const share =
+                totals.rooftops > 0 ? (row.rooftops / totals.rooftops) * 100 : 0
+
+              return (
+                <tr key={row.label}>
+                  <td className="font-medium text-slate-800">{row.label}</td>
+                  <td className="text-right font-semibold text-slate-950">
+                    {row.rooftops.toLocaleString()}
+                  </td>
+                  {showCompanies && (
+                    <td className="text-right text-slate-700">
+                      {row.companies.toLocaleString()}
+                    </td>
                   )}
-                </tbody>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  <td className="min-w-[120px] text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-blue-600"
+                          style={{ width: `${Math.min(share, 100)}%` }}
+                        />
+                      </div>
+                      <span className="w-12 text-xs font-medium text-slate-500">
+                        {share.toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
-    </div>
+
+      {filteredRows.length > maxRows && (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="flex w-full items-center justify-center gap-2 rounded-none border-t border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-none hover:bg-slate-50"
+        >
+          {expanded ? 'Show less' : `Show all ${filteredRows.length.toLocaleString()}`}
+          <ChevronDown className={`h-4 w-4 transition ${expanded ? 'rotate-180' : ''}`} />
+        </button>
+      )}
+    </section>
   )
 }

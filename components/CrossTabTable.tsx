@@ -1,5 +1,4 @@
 import { AggregatedData } from '@/types/dashboard'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function CrossTabTable({
   matrix,
@@ -10,67 +9,61 @@ export function CrossTabTable({
   const teams = matrix.teams || []
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader>
-        <CardTitle>State × Team Analysis</CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="border-b border-gray-700 bg-gray-800">
-            <th className="text-left px-4 py-2.5 font-bold border-r border-gray-700 sticky left-0 bg-gray-800 z-10 text-gray-200">
-              State
-            </th>
-            {teams.map((team) => (
-              <th
-                key={team}
-                className="text-right px-3 py-2.5 font-bold border-r border-gray-700 whitespace-nowrap text-gray-200"
-              >
-                {team}
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 p-4">
+        <h3 className="text-base font-semibold text-slate-950">State by Team Ownership</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Rooftops with companies shown beneath each value
+        </p>
+      </div>
+      <div className="max-h-[640px] overflow-auto">
+        <table className="w-full min-w-[980px] text-xs">
+          <thead>
+            <tr>
+              <th className="sticky left-0 top-0 z-20 min-w-[150px] bg-slate-50 text-left">
+                State
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {states.map((state, stateIdx) => (
-            <tr
-              key={state}
-              className={`border-b border-gray-700 ${
-                stateIdx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-800'
-              }`}
-            >
-              <td className="text-left px-4 py-2 border-r border-gray-700 sticky left-0 z-10 font-semibold text-gray-100 bg-inherit">
-                {state}
-              </td>
-              {teams.map((team) => {
-                const cell = matrix.cells?.[state]?.[team]
-                return (
-                  <td
-                    key={`${state}-${team}`}
-                    className="text-right px-3 py-2 border-r border-gray-700 hover:bg-gray-800 transition-colors"
-                  >
-                    {cell ? (
-                      <div className="text-xs">
-                        <div className="text-gray-100 font-medium">
-                          {cell.rooftops.toLocaleString()}
-                        </div>
-                        <div className="text-gray-400">
-                          {cell.companies.toLocaleString()}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-500">—</span>
-                    )}
-                  </td>
-                )
-              })}
+              {teams.map((team) => (
+                <th
+                  key={team}
+                  className="sticky top-0 z-10 min-w-[150px] bg-slate-50 text-right"
+                >
+                  {team}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-        </div>
-      </CardContent>
-    </Card>
+          </thead>
+          <tbody>
+            {states.map((state) => (
+              <tr key={state}>
+                <td className="sticky left-0 z-10 bg-white font-semibold text-slate-800">
+                  {state}
+                </td>
+                {teams.map((team) => {
+                  const cell = matrix.cells?.[state]?.[team]
+
+                  return (
+                    <td key={`${state}-${team}`} className="text-right">
+                      {cell && cell.rooftops > 0 ? (
+                        <div>
+                          <div className="font-semibold text-slate-950">
+                            {cell.rooftops.toLocaleString()}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {cell.companies.toLocaleString()}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-300">0</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }

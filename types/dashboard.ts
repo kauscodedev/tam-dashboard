@@ -25,6 +25,10 @@ export interface FilterState {
   orgTier: string | null;
   teamId: string | null;
   dmsName: string | null;
+  dealershipType: string | null;
+  state: string | null;
+  crmPlatform: string | null;
+  lifecycleStage: string | null;
 }
 
 export interface LabelMap {
@@ -70,6 +74,11 @@ export interface AggregatedData {
     teamIds: string[];   // raw IDs (used as filter keys)
     teamNames: string[]; // human-readable (parallel array with teamIds)
     dmsNames: string[];
+    dealershipTypes: string[];
+    states: string[];
+    crmPlatforms: string[];
+    lifecycleStages: string[];
+    lifecycleStageNames: string[];
   };
 }
 
