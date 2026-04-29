@@ -13,6 +13,7 @@ export interface MinifiedRecord {
   dm: string | null; // domain
   ws: string | null; // website_status
   dn: string | null; // dms_name
+  co: string | null; // country_dropdown
 }
 
 export interface GroupRow {

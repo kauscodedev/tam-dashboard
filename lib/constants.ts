@@ -15,6 +15,7 @@ export const FIELD_MAP = {
   domain: 'dm',
   website_status: 'ws',
   dms_name: 'dn',
+  country_dropdown: 'co',
 } as const;
 
 export type HubSpotFieldKey = keyof typeof FIELD_MAP;
@@ -22,6 +23,7 @@ export const REQUIRED_PROPERTIES = Object.keys(FIELD_MAP) as HubSpotFieldKey[];
 
 // Base TAM filter: company is a relevant dealership
 export const RELEVANT_WEBSITE_STATUS = 'Relevant';
+export const UNITED_STATES_COUNTRY = 'United States';
 
 // Contract closed is tracked at the GD level via lifecycle_stage_gd_level
 export const CONTRACT_CLOSED_STAGE = 'Contract Closed';

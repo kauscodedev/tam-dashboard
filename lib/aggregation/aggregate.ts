@@ -8,6 +8,7 @@ import {
   RELEVANT_WEBSITE_STATUS,
   CONTRACT_CLOSED_STAGE,
   CARSFORSALE_DMS,
+  UNITED_STATES_COUNTRY,
 } from '../constants';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -62,6 +63,21 @@ function summarize(records: MinifiedRecord[]): { rooftops: number; companies: nu
   return { rooftops: records.length, companies: gdIds.size };
 }
 
+function hasKnownDomain(record: MinifiedRecord): boolean {
+  return Boolean(record.dm);
+}
+
+function hasCountryData(records: MinifiedRecord[]): boolean {
+  return records.some((record) => Boolean(record.co));
+}
+
+function isRelevantMarketRecord(record: MinifiedRecord, shouldFilterCountry: boolean): boolean {
+  const matchesCountry = !shouldFilterCountry || record.co === UNITED_STATES_COUNTRY;
+  const matchesWebsiteStatus = record.ws === RELEVANT_WEBSITE_STATUS || record.ws === null;
+
+  return matchesCountry && matchesWebsiteStatus;
+}
+
 // ─── Main aggregation ───────────────────────────────────────────────────────
 
 /**
@@ -71,6 +87,8 @@ function summarize(records: MinifiedRecord[]): { rooftops: number; companies: nu
  * No nested loops over the full record set.
  */
 export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): AggregatedData {
+  const shouldFilterCountry = hasCountryData(allRecords);
+
   // ── Per-dimension maps (relevant records only) ──
   const rtByOrgTier = new Map<string, number>();
   const gdByOrgTier = new Map<string, Set<string>>();
@@ -127,8 +145,11 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       carsforsaleRecords.push(r);
     }
 
-    // All further reports require website_status = "Relevant"
-    if (r.ws !== RELEVANT_WEBSITE_STATUS) continue;
+    // HubSpot TAM reports use: Country = United States AND
+    // (Website Status = Relevant OR Website Status is unknown).
+    // Existing blobs created before country_dropdown was fetched do not have
+    // `co`, so country filtering is enabled only once that field is present.
+    if (!isRelevantMarketRecord(r, shouldFilterCountry)) continue;
 
     relevantRecords.push(r);
 
@@ -136,7 +157,11 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
     const NO_VAL = '(No value)';
 
     // Summary sub-sets
-    if (!r.dm) withoutDomainRecords.push(r);
+    if (!hasKnownDomain(r)) {
+      withoutDomainRecords.push(r);
+      continue;
+    }
+
     if (r.lv === CONTRACT_CLOSED_STAGE) contractClosedRecords.push(r);
 
     const isFranchise = r.td === 'Franchise';
@@ -236,11 +261,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       orgTiers: [...rtByOrgTier.keys()].filter((k) => k !== '(No value)').sort(),
       teamIds,
       teamNames,
-      dmsNames: [
-        ...new Set(
-          allRecords.map((r) => r.dn).filter((v): v is string => v !== null)
-        ),
-      ].sort(),
+      dmsNames: [...new Set(relevantRecords.map((r) => r.dn).filter((v): v is string => v !== null))].sort(),
       dealershipTypes: [...rtByDealerType.keys()].filter((k) => k !== '(No value)').sort(),
       states: [...rtByState.keys()].filter((k) => k !== '(No value)').sort(),
       crmPlatforms: [...rtByCrm.keys()].filter((k) => k !== '(No value)').sort(),
