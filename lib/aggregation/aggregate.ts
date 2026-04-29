@@ -13,9 +13,15 @@ import {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Count distinct non-null gd_id values in a set map entry */
-function countDistinct(gdIds: Set<string>): number {
-  return gdIds.size;
+type CompanyAccumulator = {
+  gdIds: Set<string>;
+  missingGdIdCount: number;
+};
+
+/** HubSpot count-distinct behavior: distinct gd_id, but blank gd_id rows count individually. */
+function countCompanies(accumulator?: CompanyAccumulator): number {
+  if (!accumulator) return 0;
+  return accumulator.gdIds.size + accumulator.missingGdIdCount;
 }
 
 /**
@@ -24,32 +30,34 @@ function countDistinct(gdIds: Set<string>): number {
  */
 function accumulate(
   rtMap: Map<string, number>,
-  gdMap: Map<string, Set<string>>,
+  gdMap: Map<string, CompanyAccumulator>,
   key: string,
   gdId: string | null
 ): void {
   rtMap.set(key, (rtMap.get(key) ?? 0) + 1);
+  let accumulator = gdMap.get(key);
+  if (!accumulator) {
+    accumulator = { gdIds: new Set<string>(), missingGdIdCount: 0 };
+    gdMap.set(key, accumulator);
+  }
   if (gdId) {
-    let s = gdMap.get(key);
-    if (!s) {
-      s = new Set<string>();
-      gdMap.set(key, s);
-    }
-    s.add(gdId);
+    accumulator.gdIds.add(gdId);
+  } else {
+    accumulator.missingGdIdCount++;
   }
 }
 
 /** Convert parallel rt/gd maps into a sorted GroupRow array */
 function toGroupRows(
   rtMap: Map<string, number>,
-  gdMap: Map<string, Set<string>>,
+  gdMap: Map<string, CompanyAccumulator>,
   labelResolver?: (key: string) => string
 ): GroupRow[] {
   return Array.from(rtMap.entries())
     .map(([key, rooftops]) => ({
       label: labelResolver ? labelResolver(key) : key,
       rooftops,
-      companies: countDistinct(gdMap.get(key) ?? new Set()),
+      companies: countCompanies(gdMap.get(key)),
     }))
     .sort((a, b) => b.rooftops - a.rooftops);
 }
@@ -57,10 +65,15 @@ function toGroupRows(
 /** Summarize a filtered set of records */
 function summarize(records: MinifiedRecord[]): { rooftops: number; companies: number } {
   const gdIds = new Set<string>();
+  let missingGdIdCount = 0;
   for (const r of records) {
-    if (r.gi) gdIds.add(r.gi);
+    if (r.gi) {
+      gdIds.add(r.gi);
+    } else {
+      missingGdIdCount++;
+    }
   }
-  return { rooftops: records.length, companies: gdIds.size };
+  return { rooftops: records.length, companies: gdIds.size + missingGdIdCount };
 }
 
 function hasKnownDomain(record: MinifiedRecord): boolean {
@@ -91,44 +104,44 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
 
   // ── Per-dimension maps (relevant records only) ──
   const rtByOrgTier = new Map<string, number>();
-  const gdByOrgTier = new Map<string, Set<string>>();
+  const gdByOrgTier = new Map<string, CompanyAccumulator>();
 
   const rtByDealerType = new Map<string, number>();
-  const gdByDealerType = new Map<string, Set<string>>();
+  const gdByDealerType = new Map<string, CompanyAccumulator>();
 
   const rtByCompetitor = new Map<string, number>();
-  const gdByCompetitor = new Map<string, Set<string>>();
+  const gdByCompetitor = new Map<string, CompanyAccumulator>();
 
   const rtByState = new Map<string, number>();
-  const gdByState = new Map<string, Set<string>>();
+  const gdByState = new Map<string, CompanyAccumulator>();
 
   const rtByCrm = new Map<string, number>();
-  const gdByCrm = new Map<string, Set<string>>();
+  const gdByCrm = new Map<string, CompanyAccumulator>();
 
   const rtByTeam = new Map<string, number>();
-  const gdByTeam = new Map<string, Set<string>>();
+  const gdByTeam = new Map<string, CompanyAccumulator>();
 
   const rtByLifecycle = new Map<string, number>();
-  const gdByLifecycle = new Map<string, Set<string>>();
+  const gdByLifecycle = new Map<string, CompanyAccumulator>();
 
   const rtByPartner = new Map<string, number>();
-  const gdByPartner = new Map<string, Set<string>>();
+  const gdByPartner = new Map<string, CompanyAccumulator>();
 
   // Franchise sub-breakdowns
   const rtFranchiseByCrm = new Map<string, number>();
-  const gdFranchiseByCrm = new Map<string, Set<string>>();
+  const gdFranchiseByCrm = new Map<string, CompanyAccumulator>();
   const rtFranchiseByLifecycle = new Map<string, number>();
-  const gdFranchiseByLifecycle = new Map<string, Set<string>>();
+  const gdFranchiseByLifecycle = new Map<string, CompanyAccumulator>();
 
   // Independent sub-breakdowns
   const rtIndependentByCrm = new Map<string, number>();
-  const gdIndependentByCrm = new Map<string, Set<string>>();
+  const gdIndependentByCrm = new Map<string, CompanyAccumulator>();
   const rtIndependentByLifecycle = new Map<string, number>();
-  const gdIndependentByLifecycle = new Map<string, Set<string>>();
+  const gdIndependentByLifecycle = new Map<string, CompanyAccumulator>();
 
   // State × Team cross-tab (composite key: "state|||teamId")
   const rtStateTeam = new Map<string, number>();
-  const gdStateTeam = new Map<string, Set<string>>();
+  const gdStateTeam = new Map<string, CompanyAccumulator>();
 
   // Summary accumulators
   const relevantRecords: MinifiedRecord[] = [];
@@ -213,7 +226,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       const key = `${state}|||${teamId}`;
       cells[state][teamName] = {
         rooftops: rtStateTeam.get(key) ?? 0,
-        companies: countDistinct(gdStateTeam.get(key) ?? new Set()),
+        companies: countCompanies(gdStateTeam.get(key)),
       };
     }
   }
