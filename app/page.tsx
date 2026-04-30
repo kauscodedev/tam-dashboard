@@ -5,10 +5,8 @@ import {
   Activity,
   AlertCircle,
   ArrowUpRight,
-  Bell,
   Building2,
   Database,
-  Download,
   ExternalLink,
   Grid2X2,
   Layers3,
@@ -164,9 +162,6 @@ function TopBar({
           <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm xl:block">
             Last synced <span className="font-medium text-slate-900">{lastSynced}</span>
           </div>
-          <button className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50">
-            <Bell className="h-4 w-4" />
-          </button>
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 font-semibold text-white shadow-lg shadow-blue-900/20">
             K
           </div>
@@ -468,15 +463,6 @@ function DashboardContent() {
                 Executive view of TAM size, market concentration, GTM ownership, vendor patterns, and CRM hygiene.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={status.status === 'syncing'}
-              className="inline-flex h-12 items-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-60"
-            >
-              <Download className="h-4 w-4" />
-              Generate Report
-            </button>
           </section>
 
           <FilterBar
@@ -570,9 +556,9 @@ function DashboardContent() {
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 of filtered Relevant TAM sits in the top five states.
               </p>
-              <div className="mt-4 flex items-center gap-2 text-sm font-medium text-blue-700">
+              <a href="#geography" className="mt-4 flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900">
                 Review geography <ArrowUpRight className="h-4 w-4" />
-              </div>
+              </a>
             </article>
           </div>
         </section>
@@ -631,19 +617,6 @@ function DashboardContent() {
           <div className="grid gap-4 lg:grid-cols-2">
             <BreakdownTable title="Team Wise Relevant TAM" rows={breakdowns.byTeam} reportHref={hubspotReportLinks.teamWise} />
             <BreakdownTable title="Lifecycle Stage Wise Relevant TAM" rows={breakdowns.byLifecycleStage} reportHref={hubspotReportLinks.lifecycleStageWise} />
-            <MetricCard
-              title="Contract Closed"
-              metric={summaries.contractClosed}
-              denominator={relevantTotal}
-              tone="success"
-              helper="Relevant United States rooftops with a known company domain under the active filters."
-              reportHref={hubspotReportLinks.contractClosed}
-            />
-            <MetricCard
-              title="Relevant TAM Coverage"
-              metric={summaries.relevantTAM}
-              helper="Current filtered population feeding every ownership and lifecycle view."
-            />
           </div>
         </section>
 
