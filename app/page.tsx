@@ -118,8 +118,25 @@ function averageRooftops(metric: CountMetric) {
   return (metric.rooftops / metric.companies).toFixed(1)
 }
 
-function topRows(rows: GroupRow[], count = 5) {
-  return rows.slice(0, count)
+function isPlaceholderRow(row: GroupRow) {
+  return row.key === NO_VALUE || row.label === NO_VALUE || row.label === '(No Team)'
+}
+
+function orderedRows(rows: GroupRow[]) {
+  return [...rows].sort((a, b) => {
+    const aPlaceholder = isPlaceholderRow(a)
+    const bPlaceholder = isPlaceholderRow(b)
+    if (aPlaceholder !== bPlaceholder) return aPlaceholder ? 1 : -1
+    return b.rooftops - a.rooftops
+  })
+}
+
+function topRows(rows: GroupRow[], count = 5, options?: { excludePlaceholders?: boolean }) {
+  const rankedRows = orderedRows(rows)
+  return (options?.excludePlaceholders
+    ? rankedRows.filter((row) => !isPlaceholderRow(row))
+    : rankedRows
+  ).slice(0, count)
 }
 
 function hasKnownDomain(record: MinifiedRecord) {
@@ -329,8 +346,17 @@ function MetricCard({
   )
 }
 
-function InsightList({ title, rows }: { title: string; rows: GroupRow[] }) {
+function InsightList({
+  title,
+  rows,
+  excludePlaceholders = false,
+}: {
+  title: string
+  rows: GroupRow[]
+  excludePlaceholders?: boolean
+}) {
   const total = rows.reduce((sum, row) => sum + row.rooftops, 0)
+  const visibleRows = topRows(rows, 5, { excludePlaceholders })
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -339,7 +365,7 @@ function InsightList({ title, rows }: { title: string; rows: GroupRow[] }) {
         <span className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500">Top 5</span>
       </div>
       <div className="mt-5 space-y-4">
-        {topRows(rows).map((row) => {
+        {visibleRows.map((row) => {
           const share = total ? (row.rooftops / total) * 100 : 0
 
           return (
@@ -648,8 +674,8 @@ function DashboardContent() {
 
           <div className="mt-4 grid gap-4 lg:grid-cols-4">
             <InsightList title="Top States" rows={breakdowns.byState} />
-            <InsightList title="Top CRMs" rows={breakdowns.byCrmPlatform} />
-            <InsightList title="Top Teams" rows={breakdowns.byTeam} />
+            <InsightList title="Top CRMs" rows={breakdowns.byCrmPlatform} excludePlaceholders />
+            <InsightList title="Top Teams" rows={breakdowns.byTeam} excludePlaceholders />
             <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-950">Market Concentration</h3>
               <p className="mt-4 text-3xl font-bold text-slate-950">

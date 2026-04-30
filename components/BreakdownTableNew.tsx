@@ -4,6 +4,22 @@ import { useMemo, useState } from 'react'
 import { DrilldownMeasure, GroupRow } from '@/types/dashboard'
 import { ChevronDown, ExternalLink, Search } from 'lucide-react'
 
+const NO_VALUE = '(No value)'
+const NO_TEAM = '(No Team)'
+
+function isPlaceholderRow(row: GroupRow) {
+  return row.key === NO_VALUE || row.label === NO_VALUE || row.label === NO_TEAM
+}
+
+function orderedRows(rows: GroupRow[]) {
+  return [...rows].sort((a, b) => {
+    const aPlaceholder = isPlaceholderRow(a)
+    const bPlaceholder = isPlaceholderRow(b)
+    if (aPlaceholder !== bPlaceholder) return aPlaceholder ? 1 : -1
+    return b.rooftops - a.rooftops
+  })
+}
+
 export function BreakdownTable({
   title,
   rows,
@@ -34,7 +50,7 @@ export function BreakdownTable({
     [rows]
   )
 
-  const filteredRows = rows.filter((row) =>
+  const filteredRows = orderedRows(rows).filter((row) =>
     row.label.toLowerCase().includes(searchTerm.toLowerCase())
   )
   const visibleRows = expanded ? filteredRows : filteredRows.slice(0, maxRows)

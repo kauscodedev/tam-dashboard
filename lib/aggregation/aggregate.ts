@@ -63,7 +63,12 @@ function toGroupRows(
       rooftops,
       companies: countCompanies(gdMap.get(key)),
     }))
-    .sort((a, b) => b.rooftops - a.rooftops);
+    .sort((a, b) => {
+      const aPlaceholder = a.key === '(No value)' || a.label === '(No value)' || a.label === '(No Team)';
+      const bPlaceholder = b.key === '(No value)' || b.label === '(No value)' || b.label === '(No Team)';
+      if (aPlaceholder !== bPlaceholder) return aPlaceholder ? 1 : -1;
+      return b.rooftops - a.rooftops;
+    });
 }
 
 /** Summarize a filtered set of records */
