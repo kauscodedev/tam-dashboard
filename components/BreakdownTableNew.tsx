@@ -2,18 +2,20 @@
 
 import { useMemo, useState } from 'react'
 import { GroupRow } from '@/types/dashboard'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, ExternalLink, Search } from 'lucide-react'
 
 export function BreakdownTable({
   title,
   rows,
   showCompanies = true,
   maxRows = 8,
+  reportHref,
 }: {
   title: string
   rows: GroupRow[]
   showCompanies?: boolean
   maxRows?: number
+  reportHref?: string
 }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [expanded, setExpanded] = useState(false)
@@ -40,7 +42,21 @@ export function BreakdownTable({
       <div className="border-b border-slate-200 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+              {reportHref && (
+                <a
+                  href={reportHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Open ${title} in HubSpot`}
+                  title={`Open ${title} in HubSpot`}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
             <p className="mt-1 text-xs text-slate-500">
               {rows.length.toLocaleString()} rows · {totals.rooftops.toLocaleString()} rooftops
             </p>

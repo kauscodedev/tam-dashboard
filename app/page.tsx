@@ -9,6 +9,7 @@ import {
   Building2,
   Database,
   Download,
+  ExternalLink,
   Grid2X2,
   Layers3,
   Map,
@@ -35,6 +36,28 @@ const sections = [
   { id: 'ownership', label: 'GTM Ownership', icon: Users2 },
   { id: 'quality', label: 'Data Quality', icon: ShieldAlert },
 ]
+
+const hubspotReportLinks = {
+  relevantTam: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264400707',
+  withoutDomains: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264448565',
+  carsforsale: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264400849',
+  contractClosed: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264401118',
+  franchiseTam: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264400788',
+  independentTam: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264448625',
+  sizeWise: 'https://app-na2.hubspot.com/reports-list/242626590/264332575/?search=SIZE%20WI',
+  dealershipTypeWise: 'https://app-na2.hubspot.com/reports-list/242626590/264332884/?search=Dealership%20Type%20Wise%20Relevant%20TAM',
+  competitorWise: 'https://app-na2.hubspot.com/reports-list/242626590/264345917/?search=Competitor%20Wise%20Relevant%20TAM',
+  stateWise: 'https://app-na2.hubspot.com/reports-list/242626590/264345550/?search=State%20Wise%20Relevant%20TAM',
+  crmWise: 'https://app-na2.hubspot.com/reports-list/242626590/264345535/?search=CRM%20Wise%20Relevant%20TAM',
+  teamWise: 'https://app-na2.hubspot.com/reports-list/242626590/264347368/?search=Team%20Wise%20Relevant%20TAM',
+  stateTeamWise: 'https://app-na2.hubspot.com/reports-list/242626590/264401667/?search=State-Team%20wise%20Relevant%20TAM',
+  partnershipWise: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264401475',
+  franchiseCrmWise: 'https://app-na2.hubspot.com/reports-list/242626590/264448687/?search=Franchise%20CRM%20wise%20TAM',
+  independentCrmWise: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264448830',
+  franchiseStageWise: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264448989',
+  independentStageWise: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264449049',
+  lifecycleStageWise: 'https://app-na2.hubspot.com/reports-list/242626590/264401023/',
+} as const
 
 function formatNumber(value: number) {
   return value.toLocaleString()
@@ -197,12 +220,14 @@ function MetricCard({
   helper,
   denominator,
   tone = 'default',
+  reportHref,
 }: {
   title: string
   metric: CountMetric
   helper?: string
   denominator?: number
   tone?: 'default' | 'risk' | 'success'
+  reportHref?: string
 }) {
   const toneClasses = {
     default: 'border-t-blue-600',
@@ -219,7 +244,21 @@ function MetricCard({
     <article className={`rounded-xl border border-t-4 border-slate-200 bg-white p-6 shadow-sm ${toneClasses[tone]}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</p>
+            {reportHref && (
+              <a
+                href={reportHref}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${title} in HubSpot`}
+                title={`Open ${title} in HubSpot`}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </div>
           <p className="mt-3 text-4xl font-light tracking-normal text-slate-950">
             {formatNumber(metric.rooftops)}
           </p>
@@ -464,18 +503,21 @@ function DashboardContent() {
               title="Relevant TAM"
               metric={summaries.relevantTAM}
               helper="Filtered rooftops where website status is Relevant."
+              reportHref={hubspotReportLinks.relevantTam}
             />
             <MetricCard
               title="Franchise TAM"
               metric={summaries.franchiseTAM}
               denominator={relevantTotal}
               helper="Strategic rooftops with larger average group concentration."
+              reportHref={hubspotReportLinks.franchiseTam}
             />
             <MetricCard
               title="Independent TAM"
               metric={summaries.independentTAM}
               denominator={relevantTotal}
               helper="Largest addressable segment by rooftop count."
+              reportHref={hubspotReportLinks.independentTam}
             />
             <MetricCard
               title="Without Domains"
@@ -483,19 +525,22 @@ function DashboardContent() {
               denominator={relevantTotal}
               tone="risk"
               helper="Data gap that can slow enrichment, outreach, and matching."
+              reportHref={hubspotReportLinks.withoutDomains}
             />
             <MetricCard
               title="Contract Closed"
               metric={summaries.contractClosed}
               denominator={relevantTotal}
               tone="success"
-              helper="GD-level lifecycle indicator for closed contracts."
+              helper="Relevant United States rooftops with a known company domain."
+              reportHref={hubspotReportLinks.contractClosed}
             />
             <MetricCard
               title="Carsforsale.com"
               metric={summaries.carsforsale}
               denominator={relevantTotal}
-              helper="DMS concentration tracked without the Relevant-only base."
+              helper="Carsforsale.Com rooftops inside the relevant known-domain TAM."
+              reportHref={hubspotReportLinks.carsforsale}
             />
             <MetricCard
               title="No Team Assigned"
@@ -540,12 +585,12 @@ function DashboardContent() {
             description="Segment the TAM by dealership type, org tier, CRM, and lifecycle so leaders can compare opportunity quality, not just volume."
           />
           <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownTable title="Size Wise Relevant TAM" rows={breakdowns.byOrgTier} />
-            <BreakdownTable title="Dealership Type Wise Relevant TAM" rows={breakdowns.byDealershipType} />
-            <BreakdownTable title="Franchise CRM Wise TAM" rows={breakdowns.franchiseByCrm} />
-            <BreakdownTable title="Independent CRM Wise TAM" rows={breakdowns.independentByCrm} />
-            <BreakdownTable title="Franchise Stage Wise TAM" rows={breakdowns.franchiseByLifecycle} />
-            <BreakdownTable title="Independent Stage Wise TAM" rows={breakdowns.independentByLifecycle} />
+            <BreakdownTable title="Size Wise Relevant TAM" rows={breakdowns.byOrgTier} reportHref={hubspotReportLinks.sizeWise} />
+            <BreakdownTable title="Dealership Type Wise Relevant TAM" rows={breakdowns.byDealershipType} reportHref={hubspotReportLinks.dealershipTypeWise} />
+            <BreakdownTable title="Franchise CRM Wise TAM" rows={breakdowns.franchiseByCrm} reportHref={hubspotReportLinks.franchiseCrmWise} />
+            <BreakdownTable title="Independent CRM Wise TAM" rows={breakdowns.independentByCrm} reportHref={hubspotReportLinks.independentCrmWise} />
+            <BreakdownTable title="Franchise Stage Wise TAM" rows={breakdowns.franchiseByLifecycle} reportHref={hubspotReportLinks.franchiseStageWise} />
+            <BreakdownTable title="Independent Stage Wise TAM" rows={breakdowns.independentByLifecycle} reportHref={hubspotReportLinks.independentStageWise} />
           </div>
         </section>
 
@@ -557,8 +602,8 @@ function DashboardContent() {
             description="Show where addressable rooftops are concentrated and how state-level ownership is distributed across teams."
           />
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
-            <BreakdownTable title="State Wise Relevant TAM" rows={breakdowns.byState} maxRows={12} />
-            <CrossTabTable matrix={stateTeamMatrix} />
+            <BreakdownTable title="State Wise Relevant TAM" rows={breakdowns.byState} maxRows={12} reportHref={hubspotReportLinks.stateWise} />
+            <CrossTabTable matrix={stateTeamMatrix} reportHref={hubspotReportLinks.stateTeamWise} />
           </div>
         </section>
 
@@ -570,9 +615,9 @@ function DashboardContent() {
             description="Inspect CRM, DMS, competitor, and partnership concentration for ecosystem strategy and campaign targeting."
           />
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <BreakdownTable title="CRM Wise Relevant TAM" rows={breakdowns.byCrmPlatform} />
-            <BreakdownTable title="Competitor Wise Relevant TAM" rows={breakdowns.byCompetitor} />
-            <BreakdownTable title="Partnership Wise Relevant TAM" rows={breakdowns.byPartner} />
+            <BreakdownTable title="CRM Wise Relevant TAM" rows={breakdowns.byCrmPlatform} reportHref={hubspotReportLinks.crmWise} />
+            <BreakdownTable title="Competitor Wise Relevant TAM" rows={breakdowns.byCompetitor} reportHref={hubspotReportLinks.competitorWise} />
+            <BreakdownTable title="Partnership Wise Relevant TAM" rows={breakdowns.byPartner} reportHref={hubspotReportLinks.partnershipWise} />
           </div>
         </section>
 
@@ -584,14 +629,15 @@ function DashboardContent() {
             description="Track how the filtered TAM maps to teams and lifecycle stages so business leaders can see coverage and pipeline maturity."
           />
           <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownTable title="Team Wise Relevant TAM" rows={breakdowns.byTeam} />
-            <BreakdownTable title="Lifecycle Stage Wise Relevant TAM" rows={breakdowns.byLifecycleStage} />
+            <BreakdownTable title="Team Wise Relevant TAM" rows={breakdowns.byTeam} reportHref={hubspotReportLinks.teamWise} />
+            <BreakdownTable title="Lifecycle Stage Wise Relevant TAM" rows={breakdowns.byLifecycleStage} reportHref={hubspotReportLinks.lifecycleStageWise} />
             <MetricCard
               title="Contract Closed"
               metric={summaries.contractClosed}
               denominator={relevantTotal}
               tone="success"
-              helper="Use this as the headline closed-contract indicator under the active filters."
+              helper="Relevant United States rooftops with a known company domain under the active filters."
+              reportHref={hubspotReportLinks.contractClosed}
             />
             <MetricCard
               title="Relevant TAM Coverage"

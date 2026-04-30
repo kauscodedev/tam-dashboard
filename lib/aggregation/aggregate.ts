@@ -6,7 +6,6 @@ import type {
 } from '../../types/dashboard';
 import {
   RELEVANT_WEBSITE_STATUS,
-  CONTRACT_CLOSED_STAGE,
   CARSFORSALE_DMS,
   UNITED_STATES_COUNTRY,
 } from '../constants';
@@ -147,17 +146,12 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
   const relevantRecords: MinifiedRecord[] = [];
   const withoutDomainRecords: MinifiedRecord[] = [];
   const carsforsaleRecords: MinifiedRecord[] = [];
-  const contractClosedRecords: MinifiedRecord[] = [];
+  const knownDomainRecords: MinifiedRecord[] = [];
   const franchiseRecords: MinifiedRecord[] = [];
   const independentRecords: MinifiedRecord[] = [];
 
   // ── Single pass ──
   for (const r of allRecords) {
-    // Carsforsale: no website_status requirement
-    if (r.dn === CARSFORSALE_DMS) {
-      carsforsaleRecords.push(r);
-    }
-
     // HubSpot TAM reports use: Country = United States AND
     // (Website Status = Relevant OR Website Status is unknown).
     // Existing blobs created before country_dropdown was fetched do not have
@@ -175,7 +169,8 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       continue;
     }
 
-    if (r.lv === CONTRACT_CLOSED_STAGE) contractClosedRecords.push(r);
+    knownDomainRecords.push(r);
+    if (r.dn === CARSFORSALE_DMS) carsforsaleRecords.push(r);
 
     const isFranchise = r.td === 'Franchise';
     const isIndependent = r.td === 'Independent';
@@ -244,7 +239,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       relevantTAM: summarize(relevantRecords),
       withoutDomains: summarize(withoutDomainRecords),
       carsforsale: summarize(carsforsaleRecords),
-      contractClosed: summarize(contractClosedRecords),
+      contractClosed: summarize(knownDomainRecords),
       franchiseTAM: summarize(franchiseRecords),
       independentTAM: summarize(independentRecords),
     },

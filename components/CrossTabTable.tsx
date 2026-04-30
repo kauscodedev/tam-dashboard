@@ -1,9 +1,12 @@
 import { AggregatedData } from '@/types/dashboard'
+import { ExternalLink } from 'lucide-react'
 
 export function CrossTabTable({
   matrix,
+  reportHref,
 }: {
   matrix: AggregatedData['stateTeamMatrix']
+  reportHref?: string
 }) {
   const states = matrix.states || []
   const teams = matrix.teams || []
@@ -11,7 +14,21 @@ export function CrossTabTable({
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 p-4">
-        <h3 className="text-base font-semibold text-slate-950">State by Team Ownership</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-semibold text-slate-950">State-Team Wise Relevant TAM</h3>
+          {reportHref && (
+            <a
+              href={reportHref}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open State-Team Wise Relevant TAM in HubSpot"
+              title="Open State-Team Wise Relevant TAM in HubSpot"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </div>
         <p className="mt-1 text-xs text-slate-500">
           Rooftops with companies shown beneath each value
         </p>
