@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, type ReactNode } from 'react'
+import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -17,14 +17,28 @@ import {
 } from 'lucide-react'
 import { BreakdownTable } from '@/components/BreakdownTableNew'
 import { CrossTabTable } from '@/components/CrossTabTable'
+import { DrilldownModal } from '@/components/DrilldownModal'
 import { FilterBar } from '@/components/FilterBarNew'
 import { SyncStatusBanner } from '@/components/SyncStatusBanner'
 import { useDashboardData } from '@/hooks/useDashboardData'
 import { useFilters } from '@/hooks/useFilters'
 import { useSyncStatus } from '@/hooks/useSyncStatus'
-import type { GroupRow, MinifiedRecord } from '@/types/dashboard'
+import type { DrilldownMeasure, GroupRow, MinifiedRecord } from '@/types/dashboard'
 
 type CountMetric = { rooftops: number; companies: number }
+type DrilldownField = keyof Pick<MinifiedRecord, 'ot' | 'td' | 'cn' | 'cp' | 'st' | 'tm' | 'pn' | 'ls'>
+type BreakdownDrilldownConfig = {
+  field: DrilldownField
+  segmentColumn: string
+  predicate?: (record: MinifiedRecord) => boolean
+}
+type DrilldownModalState = {
+  reportTitle: string
+  segmentLabel: string
+  segmentColumn: string
+  measure: DrilldownMeasure
+  records: MinifiedRecord[]
+}
 
 const sections = [
   { id: 'overview', label: 'Dashboard', icon: Grid2X2 },
@@ -57,6 +71,38 @@ const hubspotReportLinks = {
   lifecycleStageWise: 'https://app-na2.hubspot.com/reports-list/242626590/264401023/',
 } as const
 
+const NO_VALUE = '(No value)'
+const drilldownConfigs = {
+  orgTier: { field: 'ot', segmentColumn: 'Org Tier' },
+  dealershipType: { field: 'td', segmentColumn: 'Dealership Type' },
+  crm: { field: 'cp', segmentColumn: 'CRM Platform' },
+  competitor: { field: 'cn', segmentColumn: 'Competitor' },
+  state: { field: 'st', segmentColumn: 'State' },
+  team: { field: 'tm', segmentColumn: 'HubSpot Team' },
+  lifecycle: { field: 'ls', segmentColumn: 'Lifecycle Stage' },
+  partnership: { field: 'pn', segmentColumn: 'Partnership' },
+  franchiseCrm: {
+    field: 'cp',
+    segmentColumn: 'CRM Platform',
+    predicate: (record: MinifiedRecord) => record.td === 'Franchise',
+  },
+  independentCrm: {
+    field: 'cp',
+    segmentColumn: 'CRM Platform',
+    predicate: (record: MinifiedRecord) => record.td === 'Independent',
+  },
+  franchiseStage: {
+    field: 'ls',
+    segmentColumn: 'Lifecycle Stage',
+    predicate: (record: MinifiedRecord) => record.td === 'Franchise',
+  },
+  independentStage: {
+    field: 'ls',
+    segmentColumn: 'Lifecycle Stage',
+    predicate: (record: MinifiedRecord) => record.td === 'Independent',
+  },
+} satisfies Record<string, BreakdownDrilldownConfig>
+
 function formatNumber(value: number) {
   return value.toLocaleString()
 }
@@ -73,6 +119,14 @@ function averageRooftops(metric: CountMetric) {
 
 function topRows(rows: GroupRow[], count = 5) {
   return rows.slice(0, count)
+}
+
+function hasKnownDomain(record: MinifiedRecord) {
+  return Boolean(record.dm)
+}
+
+function segmentValue(record: MinifiedRecord, field: DrilldownField) {
+  return record[field] ?? NO_VALUE
 }
 
 function Sidebar() {
@@ -198,6 +252,7 @@ function buildMissingFieldRows(records: MinifiedRecord[]): GroupRow[] {
     .map(({ label, key }) => {
       const missing = records.filter((record) => !record[key])
       return {
+        key,
         label,
         ...summarizeRecords(missing),
       }
@@ -376,6 +431,7 @@ function DashboardContent() {
   const { data, loading, error } = useDashboardData()
   const { status } = useSyncStatus()
   const { filteredData, filters, setFilter, resetFilters } = useFilters(data)
+  const [drilldown, setDrilldown] = useState<DrilldownModalState | null>(null)
 
   const handleRefresh = async () => {
     try {
@@ -397,8 +453,8 @@ function DashboardContent() {
     const topFiveStates = topRows(filteredData.breakdowns.byState)
     const topFiveStateShare = topFiveStates.reduce((sum, row) => sum + row.rooftops, 0)
     const missingRows = buildMissingFieldRows(filteredData.relevantRecords)
-    const noTeam = findRow(missingRows, 'HubSpot Team') ?? { label: 'HubSpot Team', rooftops: 0, companies: 0 }
-    const noCrm = findRow(missingRows, 'CRM Platform') ?? { label: 'CRM Platform', rooftops: 0, companies: 0 }
+    const noTeam = findRow(missingRows, 'HubSpot Team') ?? { key: 'tm', label: 'HubSpot Team', rooftops: 0, companies: 0 }
+    const noCrm = findRow(missingRows, 'CRM Platform') ?? { key: 'cp', label: 'CRM Platform', rooftops: 0, companies: 0 }
 
     return {
       topFiveStates,
@@ -446,6 +502,46 @@ function DashboardContent() {
   const lastSynced = filteredData.fetchedAt
     ? new Date(filteredData.fetchedAt).toLocaleString()
     : 'Unknown'
+  const openBreakdownDrilldown = (
+    reportTitle: string,
+    config: BreakdownDrilldownConfig,
+    row: GroupRow,
+    measure: DrilldownMeasure
+  ) => {
+    const records = filteredData.relevantRecords.filter((record) => (
+      hasKnownDomain(record) &&
+      segmentValue(record, config.field) === row.key &&
+      (!config.predicate || config.predicate(record))
+    ))
+
+    setDrilldown({
+      reportTitle,
+      segmentLabel: row.label,
+      segmentColumn: config.segmentColumn,
+      measure,
+      records,
+    })
+  }
+  const openStateTeamDrilldown = (
+    state: string,
+    teamId: string,
+    teamName: string,
+    measure: DrilldownMeasure
+  ) => {
+    const records = filteredData.relevantRecords.filter((record) => (
+      hasKnownDomain(record) &&
+      (record.st ?? NO_VALUE) === state &&
+      (record.tm ?? NO_VALUE) === teamId
+    ))
+
+    setDrilldown({
+      reportTitle: 'State-Team Wise Relevant TAM',
+      segmentLabel: `${state} / ${teamName}`,
+      segmentColumn: 'State / Team',
+      measure,
+      records,
+    })
+  }
 
   return (
     <div className="min-h-screen bg-[#eef1f7] text-slate-950">
@@ -571,12 +667,42 @@ function DashboardContent() {
             description="Segment the TAM by dealership type, org tier, CRM, and lifecycle so leaders can compare opportunity quality, not just volume."
           />
           <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownTable title="Size Wise Relevant TAM" rows={breakdowns.byOrgTier} reportHref={hubspotReportLinks.sizeWise} />
-            <BreakdownTable title="Dealership Type Wise Relevant TAM" rows={breakdowns.byDealershipType} reportHref={hubspotReportLinks.dealershipTypeWise} />
-            <BreakdownTable title="Franchise CRM Wise TAM" rows={breakdowns.franchiseByCrm} reportHref={hubspotReportLinks.franchiseCrmWise} />
-            <BreakdownTable title="Independent CRM Wise TAM" rows={breakdowns.independentByCrm} reportHref={hubspotReportLinks.independentCrmWise} />
-            <BreakdownTable title="Franchise Stage Wise TAM" rows={breakdowns.franchiseByLifecycle} reportHref={hubspotReportLinks.franchiseStageWise} />
-            <BreakdownTable title="Independent Stage Wise TAM" rows={breakdowns.independentByLifecycle} reportHref={hubspotReportLinks.independentStageWise} />
+            <BreakdownTable
+              title="Size Wise Relevant TAM"
+              rows={breakdowns.byOrgTier}
+              reportHref={hubspotReportLinks.sizeWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Size Wise Relevant TAM', drilldownConfigs.orgTier, row, measure)}
+            />
+            <BreakdownTable
+              title="Dealership Type Wise Relevant TAM"
+              rows={breakdowns.byDealershipType}
+              reportHref={hubspotReportLinks.dealershipTypeWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Dealership Type Wise Relevant TAM', drilldownConfigs.dealershipType, row, measure)}
+            />
+            <BreakdownTable
+              title="Franchise CRM Wise TAM"
+              rows={breakdowns.franchiseByCrm}
+              reportHref={hubspotReportLinks.franchiseCrmWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Franchise CRM Wise TAM', drilldownConfigs.franchiseCrm, row, measure)}
+            />
+            <BreakdownTable
+              title="Independent CRM Wise TAM"
+              rows={breakdowns.independentByCrm}
+              reportHref={hubspotReportLinks.independentCrmWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Independent CRM Wise TAM', drilldownConfigs.independentCrm, row, measure)}
+            />
+            <BreakdownTable
+              title="Franchise Stage Wise TAM"
+              rows={breakdowns.franchiseByLifecycle}
+              reportHref={hubspotReportLinks.franchiseStageWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Franchise Stage Wise TAM', drilldownConfigs.franchiseStage, row, measure)}
+            />
+            <BreakdownTable
+              title="Independent Stage Wise TAM"
+              rows={breakdowns.independentByLifecycle}
+              reportHref={hubspotReportLinks.independentStageWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Independent Stage Wise TAM', drilldownConfigs.independentStage, row, measure)}
+            />
           </div>
         </section>
 
@@ -588,8 +714,18 @@ function DashboardContent() {
             description="Show where addressable rooftops are concentrated and how state-level ownership is distributed across teams."
           />
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
-            <BreakdownTable title="State Wise Relevant TAM" rows={breakdowns.byState} maxRows={12} reportHref={hubspotReportLinks.stateWise} />
-            <CrossTabTable matrix={stateTeamMatrix} reportHref={hubspotReportLinks.stateTeamWise} />
+            <BreakdownTable
+              title="State Wise Relevant TAM"
+              rows={breakdowns.byState}
+              maxRows={12}
+              reportHref={hubspotReportLinks.stateWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('State Wise Relevant TAM', drilldownConfigs.state, row, measure)}
+            />
+            <CrossTabTable
+              matrix={stateTeamMatrix}
+              reportHref={hubspotReportLinks.stateTeamWise}
+              onDrilldown={openStateTeamDrilldown}
+            />
           </div>
         </section>
 
@@ -601,9 +737,24 @@ function DashboardContent() {
             description="Inspect CRM, DMS, competitor, and partnership concentration for ecosystem strategy and campaign targeting."
           />
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <BreakdownTable title="CRM Wise Relevant TAM" rows={breakdowns.byCrmPlatform} reportHref={hubspotReportLinks.crmWise} />
-            <BreakdownTable title="Competitor Wise Relevant TAM" rows={breakdowns.byCompetitor} reportHref={hubspotReportLinks.competitorWise} />
-            <BreakdownTable title="Partnership Wise Relevant TAM" rows={breakdowns.byPartner} reportHref={hubspotReportLinks.partnershipWise} />
+            <BreakdownTable
+              title="CRM Wise Relevant TAM"
+              rows={breakdowns.byCrmPlatform}
+              reportHref={hubspotReportLinks.crmWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('CRM Wise Relevant TAM', drilldownConfigs.crm, row, measure)}
+            />
+            <BreakdownTable
+              title="Competitor Wise Relevant TAM"
+              rows={breakdowns.byCompetitor}
+              reportHref={hubspotReportLinks.competitorWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Competitor Wise Relevant TAM', drilldownConfigs.competitor, row, measure)}
+            />
+            <BreakdownTable
+              title="Partnership Wise Relevant TAM"
+              rows={breakdowns.byPartner}
+              reportHref={hubspotReportLinks.partnershipWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Partnership Wise Relevant TAM', drilldownConfigs.partnership, row, measure)}
+            />
           </div>
         </section>
 
@@ -615,8 +766,18 @@ function DashboardContent() {
             description="Track how the filtered TAM maps to teams and lifecycle stages so business leaders can see coverage and pipeline maturity."
           />
           <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownTable title="Team Wise Relevant TAM" rows={breakdowns.byTeam} reportHref={hubspotReportLinks.teamWise} />
-            <BreakdownTable title="Lifecycle Stage Wise Relevant TAM" rows={breakdowns.byLifecycleStage} reportHref={hubspotReportLinks.lifecycleStageWise} />
+            <BreakdownTable
+              title="Team Wise Relevant TAM"
+              rows={breakdowns.byTeam}
+              reportHref={hubspotReportLinks.teamWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Team Wise Relevant TAM', drilldownConfigs.team, row, measure)}
+            />
+            <BreakdownTable
+              title="Lifecycle Stage Wise Relevant TAM"
+              rows={breakdowns.byLifecycleStage}
+              reportHref={hubspotReportLinks.lifecycleStageWise}
+              onDrilldown={(row, measure) => openBreakdownDrilldown('Lifecycle Stage Wise Relevant TAM', drilldownConfigs.lifecycle, row, measure)}
+            />
           </div>
         </section>
 
@@ -649,6 +810,17 @@ function DashboardContent() {
         </section>
         </main>
       </div>
+      {drilldown && (
+        <DrilldownModal
+          open={Boolean(drilldown)}
+          reportTitle={drilldown.reportTitle}
+          segmentLabel={drilldown.segmentLabel}
+          segmentColumn={drilldown.segmentColumn}
+          measure={drilldown.measure}
+          records={drilldown.records}
+          onClose={() => setDrilldown(null)}
+        />
+      )}
     </div>
   )
 }

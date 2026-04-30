@@ -1,5 +1,7 @@
 // Minified record — short keys to reduce JSON payload (~7MB → ~1.5MB gzipped)
 export interface MinifiedRecord {
+  hi: string | null; // HubSpot company object ID
+  nm: string | null; // company name
   gi: string | null; // gd_id (dealer group ID)
   ot: string | null; // org_tier
   td: string | null; // type_of_dealership
@@ -17,10 +19,13 @@ export interface MinifiedRecord {
 }
 
 export interface GroupRow {
+  key: string; // raw grouping key used for filtering drilldowns
   label: string; // human-readable (resolved at aggregate time)
   rooftops: number;
   companies: number; // COUNT DISTINCT gd_id
 }
+
+export type DrilldownMeasure = 'rooftops' | 'companies';
 
 export interface FilterState {
   orgTier: string | null;
@@ -67,6 +72,7 @@ export interface AggregatedData {
   stateTeamMatrix: {
     states: string[];
     teams: string[]; // human-readable team names
+    teamIds: string[]; // raw team IDs, parallel with teams
     cells: Record<string, Record<string, { rooftops: number; companies: number }>>;
     // cells[state][teamName] = { rooftops, companies }
   };

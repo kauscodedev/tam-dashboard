@@ -1,7 +1,9 @@
 export const HUBSPOT_API_BASE = 'https://api.hubapi.com';
+export const HUBSPOT_PORTAL_ID = '242626590';
 
 // Maps HubSpot property names → minified 2-letter keys in stored JSON
 export const FIELD_MAP = {
+  name: 'nm',
   gd_id: 'gi',
   org_tier: 'ot',
   type_of_dealership: 'td',

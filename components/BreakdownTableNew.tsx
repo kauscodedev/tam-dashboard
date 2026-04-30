@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { GroupRow } from '@/types/dashboard'
+import { DrilldownMeasure, GroupRow } from '@/types/dashboard'
 import { ChevronDown, ExternalLink, Search } from 'lucide-react'
 
 export function BreakdownTable({
@@ -10,12 +10,14 @@ export function BreakdownTable({
   showCompanies = true,
   maxRows = 8,
   reportHref,
+  onDrilldown,
 }: {
   title: string
   rows: GroupRow[]
   showCompanies?: boolean
   maxRows?: number
   reportHref?: string
+  onDrilldown?: (row: GroupRow, measure: DrilldownMeasure) => void
 }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [expanded, setExpanded] = useState(false)
@@ -93,11 +95,31 @@ export function BreakdownTable({
                 <tr key={row.label}>
                   <td className="font-medium text-slate-800">{row.label}</td>
                   <td className="text-right font-semibold text-slate-950">
-                    {row.rooftops.toLocaleString()}
+                    {onDrilldown ? (
+                      <button
+                        type="button"
+                        onClick={() => onDrilldown(row, 'rooftops')}
+                        className="rounded-md px-2 py-1 font-semibold text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
+                      >
+                        {row.rooftops.toLocaleString()}
+                      </button>
+                    ) : (
+                      row.rooftops.toLocaleString()
+                    )}
                   </td>
                   {showCompanies && (
                     <td className="text-right text-slate-700">
-                      {row.companies.toLocaleString()}
+                      {onDrilldown ? (
+                        <button
+                          type="button"
+                          onClick={() => onDrilldown(row, 'companies')}
+                          className="rounded-md px-2 py-1 font-medium text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
+                        >
+                          {row.companies.toLocaleString()}
+                        </button>
+                      ) : (
+                        row.companies.toLocaleString()
+                      )}
                     </td>
                   )}
                   <td className="min-w-[120px] text-right">

@@ -1,15 +1,18 @@
-import { AggregatedData } from '@/types/dashboard'
+import { AggregatedData, DrilldownMeasure } from '@/types/dashboard'
 import { ExternalLink } from 'lucide-react'
 
 export function CrossTabTable({
   matrix,
   reportHref,
+  onDrilldown,
 }: {
   matrix: AggregatedData['stateTeamMatrix']
   reportHref?: string
+  onDrilldown?: (state: string, teamId: string, teamName: string, measure: DrilldownMeasure) => void
 }) {
   const states = matrix.states || []
   const teams = matrix.teams || []
+  const teamIds = matrix.teamIds || []
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -56,19 +59,40 @@ export function CrossTabTable({
                 <td className="sticky left-0 z-10 bg-white font-semibold text-slate-800">
                   {state}
                 </td>
-                {teams.map((team) => {
+                {teams.map((team, index) => {
+                  const teamId = teamIds[index] ?? team
                   const cell = matrix.cells?.[state]?.[team]
 
                   return (
                     <td key={`${state}-${team}`} className="text-right">
                       {cell && cell.rooftops > 0 ? (
                         <div>
-                          <div className="font-semibold text-slate-950">
-                            {cell.rooftops.toLocaleString()}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {cell.companies.toLocaleString()}
-                          </div>
+                          {onDrilldown ? (
+                            <button
+                              type="button"
+                              onClick={() => onDrilldown(state, teamId, team, 'rooftops')}
+                              className="rounded-md px-1.5 py-0.5 font-semibold text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
+                            >
+                              {cell.rooftops.toLocaleString()}
+                            </button>
+                          ) : (
+                            <div className="font-semibold text-slate-950">
+                              {cell.rooftops.toLocaleString()}
+                            </div>
+                          )}
+                          {onDrilldown ? (
+                            <button
+                              type="button"
+                              onClick={() => onDrilldown(state, teamId, team, 'companies')}
+                              className="mt-0.5 block w-full rounded-md px-1.5 py-0.5 text-[11px] text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
+                            >
+                              {cell.companies.toLocaleString()}
+                            </button>
+                          ) : (
+                            <div className="text-[11px] text-slate-500">
+                              {cell.companies.toLocaleString()}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <span className="text-slate-300">0</span>

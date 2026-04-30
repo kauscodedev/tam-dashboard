@@ -39,7 +39,7 @@ export async function fetchAllCompanies(
     }
 
     for (const result of json.results) {
-      records.push(minifyRecord(result.properties as RawProperties));
+      records.push(minifyRecord(result.properties as RawProperties, result.id));
     }
 
     after = json.paging?.next?.after;
@@ -62,8 +62,10 @@ export async function fetchAllCompanies(
  * Maps a raw HubSpot properties object to a MinifiedRecord using the FIELD_MAP.
  * Null/empty strings are normalized to null.
  */
-function minifyRecord(props: RawProperties): MinifiedRecord {
-  const record: Partial<MinifiedRecord> = {};
+function minifyRecord(props: RawProperties, hubspotId?: string): MinifiedRecord {
+  const record: Partial<MinifiedRecord> = {
+    hi: hubspotId && hubspotId.trim() !== '' ? hubspotId.trim() : null,
+  };
 
   for (const [hsKey, minKey] of Object.entries(FIELD_MAP) as [HubSpotFieldKey, string][]) {
     const val = props[hsKey];

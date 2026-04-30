@@ -54,6 +54,7 @@ function toGroupRows(
 ): GroupRow[] {
   return Array.from(rtMap.entries())
     .map(([key, rooftops]) => ({
+      key,
       label: labelResolver ? labelResolver(key) : key,
       rooftops,
       companies: countCompanies(gdMap.get(key)),
@@ -262,6 +263,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
     stateTeamMatrix: {
       states: allStates,
       teams: allTeamNames,
+      teamIds: allTeamIds,
       cells,
     },
 
