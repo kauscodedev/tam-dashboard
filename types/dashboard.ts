@@ -2,6 +2,7 @@
 export interface MinifiedRecord {
   hi: string | null; // HubSpot company object ID
   nm: string | null; // company name
+  oi: string | null; // org_id (HubSpot "Org Id", preferred company distinct key)
   gi: string | null; // gd_id (dealer group ID)
   ot: string | null; // org_tier
   td: string | null; // type_of_dealership
@@ -22,7 +23,7 @@ export interface GroupRow {
   key: string; // raw grouping key used for filtering drilldowns
   label: string; // human-readable (resolved at aggregate time)
   rooftops: number;
-  companies: number; // COUNT DISTINCT gd_id
+  companies: number; // COUNT DISTINCT org_id, falling back to gd_id
 }
 
 export type DrilldownMeasure = 'rooftops' | 'companies';

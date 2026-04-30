@@ -13,36 +13,40 @@ import {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 type CompanyAccumulator = {
-  gdIds: Set<string>;
-  missingGdIdCount: number;
+  companyIds: Set<string>;
+  missingCompanyIdCount: number;
 };
 
-/** HubSpot count-distinct behavior: distinct gd_id, but blank gd_id rows count individually. */
+/** HubSpot count-distinct behavior: distinct org_id/gd_id, but blank IDs count individually. */
 function countCompanies(accumulator?: CompanyAccumulator): number {
   if (!accumulator) return 0;
-  return accumulator.gdIds.size + accumulator.missingGdIdCount;
+  return accumulator.companyIds.size + accumulator.missingCompanyIdCount;
+}
+
+function getCompanyKey(record: MinifiedRecord): string | null {
+  return record.oi || record.gi;
 }
 
 /**
- * Increment rooftop count and accumulate gd_id into the set for a given key.
+ * Increment rooftop count and accumulate company ID into the set for a given key.
  * O(1) per call.
  */
 function accumulate(
   rtMap: Map<string, number>,
   gdMap: Map<string, CompanyAccumulator>,
   key: string,
-  gdId: string | null
+  companyId: string | null
 ): void {
   rtMap.set(key, (rtMap.get(key) ?? 0) + 1);
   let accumulator = gdMap.get(key);
   if (!accumulator) {
-    accumulator = { gdIds: new Set<string>(), missingGdIdCount: 0 };
+    accumulator = { companyIds: new Set<string>(), missingCompanyIdCount: 0 };
     gdMap.set(key, accumulator);
   }
-  if (gdId) {
-    accumulator.gdIds.add(gdId);
+  if (companyId) {
+    accumulator.companyIds.add(companyId);
   } else {
-    accumulator.missingGdIdCount++;
+    accumulator.missingCompanyIdCount++;
   }
 }
 
@@ -64,16 +68,17 @@ function toGroupRows(
 
 /** Summarize a filtered set of records */
 function summarize(records: MinifiedRecord[]): { rooftops: number; companies: number } {
-  const gdIds = new Set<string>();
-  let missingGdIdCount = 0;
+  const companyIds = new Set<string>();
+  let missingCompanyIdCount = 0;
   for (const r of records) {
-    if (r.gi) {
-      gdIds.add(r.gi);
+    const companyKey = getCompanyKey(r);
+    if (companyKey) {
+      companyIds.add(companyKey);
     } else {
-      missingGdIdCount++;
+      missingCompanyIdCount++;
     }
   }
-  return { rooftops: records.length, companies: gdIds.size + missingGdIdCount };
+  return { rooftops: records.length, companies: companyIds.size + missingCompanyIdCount };
 }
 
 function hasKnownDomain(record: MinifiedRecord): boolean {
@@ -161,7 +166,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
 
     relevantRecords.push(r);
 
-    const gi = r.gi; // dealer group ID (may be null)
+    const companyKey = getCompanyKey(r); // org_id/gd_id company key (may be null)
     const NO_VAL = '(No value)';
 
     // Summary sub-sets
@@ -179,27 +184,27 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
     if (isIndependent) independentRecords.push(r);
 
     // Breakdown dimensions
-    accumulate(rtByOrgTier, gdByOrgTier, r.ot ?? NO_VAL, gi);
-    accumulate(rtByDealerType, gdByDealerType, r.td ?? NO_VAL, gi);
-    accumulate(rtByCompetitor, gdByCompetitor, r.cn ?? NO_VAL, gi);
-    accumulate(rtByState, gdByState, r.st ?? NO_VAL, gi);
-    accumulate(rtByCrm, gdByCrm, r.cp ?? NO_VAL, gi);
-    accumulate(rtByTeam, gdByTeam, r.tm ?? NO_VAL, gi);
-    accumulate(rtByLifecycle, gdByLifecycle, r.ls ?? NO_VAL, gi);
-    accumulate(rtByPartner, gdByPartner, r.pn ?? NO_VAL, gi);
+    accumulate(rtByOrgTier, gdByOrgTier, r.ot ?? NO_VAL, companyKey);
+    accumulate(rtByDealerType, gdByDealerType, r.td ?? NO_VAL, companyKey);
+    accumulate(rtByCompetitor, gdByCompetitor, r.cn ?? NO_VAL, companyKey);
+    accumulate(rtByState, gdByState, r.st ?? NO_VAL, companyKey);
+    accumulate(rtByCrm, gdByCrm, r.cp ?? NO_VAL, companyKey);
+    accumulate(rtByTeam, gdByTeam, r.tm ?? NO_VAL, companyKey);
+    accumulate(rtByLifecycle, gdByLifecycle, r.ls ?? NO_VAL, companyKey);
+    accumulate(rtByPartner, gdByPartner, r.pn ?? NO_VAL, companyKey);
 
     if (isFranchise) {
-      accumulate(rtFranchiseByCrm, gdFranchiseByCrm, r.cp ?? NO_VAL, gi);
-      accumulate(rtFranchiseByLifecycle, gdFranchiseByLifecycle, r.ls ?? NO_VAL, gi);
+      accumulate(rtFranchiseByCrm, gdFranchiseByCrm, r.cp ?? NO_VAL, companyKey);
+      accumulate(rtFranchiseByLifecycle, gdFranchiseByLifecycle, r.ls ?? NO_VAL, companyKey);
     }
     if (isIndependent) {
-      accumulate(rtIndependentByCrm, gdIndependentByCrm, r.cp ?? NO_VAL, gi);
-      accumulate(rtIndependentByLifecycle, gdIndependentByLifecycle, r.ls ?? NO_VAL, gi);
+      accumulate(rtIndependentByCrm, gdIndependentByCrm, r.cp ?? NO_VAL, companyKey);
+      accumulate(rtIndependentByLifecycle, gdIndependentByLifecycle, r.ls ?? NO_VAL, companyKey);
     }
 
     // Cross-tab: state × team
     const stateTeamKey = `${r.st ?? NO_VAL}|||${r.tm ?? NO_VAL}`;
-    accumulate(rtStateTeam, gdStateTeam, stateTeamKey, gi);
+    accumulate(rtStateTeam, gdStateTeam, stateTeamKey, companyKey);
   }
 
   // ── Label resolvers ──

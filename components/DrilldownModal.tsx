@@ -37,7 +37,7 @@ function buildCompanyGroups(records: MinifiedRecord[]): CompanyGroup[] {
   const groups = new Map<string, CompanyGroup>()
 
   records.forEach((record, index) => {
-    const key = record.gi || `__missing_gd_id_${record.hi || index}`
+    const key = record.oi || record.gi || `__missing_company_id_${record.hi || index}`
     const existing = groups.get(key)
 
     if (existing) {
