@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { AggregatedData, DrilldownMeasure } from '@/types/dashboard'
 import { ExternalLink } from 'lucide-react'
 
@@ -33,23 +34,42 @@ export function CrossTabTable({
           )}
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Rooftops with companies shown beneath each value
+          Each team is split into rooftop and company counts
         </p>
       </div>
       <div className="max-h-[640px] overflow-auto">
-        <table className="w-full min-w-[980px] text-xs">
+        <table className="w-full min-w-[1280px] text-xs">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-20 min-w-[150px] bg-slate-50 text-left">
+              <th rowSpan={2} className="sticky left-0 top-0 z-20 min-w-[150px] bg-slate-50 text-left">
                 State
               </th>
               {teams.map((team) => (
                 <th
                   key={team}
-                  className="sticky top-0 z-10 min-w-[150px] bg-slate-50 text-right"
+                  colSpan={2}
+                  className="sticky top-0 z-10 min-w-[220px] border-l border-slate-200 bg-slate-50 text-center"
                 >
                   {team}
                 </th>
+              ))}
+            </tr>
+            <tr>
+              {teams.map((team) => (
+                <Fragment key={`${team}-subheaders`}>
+                  <th
+                    key={`${team}-rooftops`}
+                    className="sticky top-[41px] z-10 min-w-[110px] border-l border-slate-200 bg-slate-50 text-right text-[11px]"
+                  >
+                    #Rooftops
+                  </th>
+                  <th
+                    key={`${team}-companies`}
+                    className="sticky top-[41px] z-10 min-w-[110px] bg-slate-50 text-right text-[11px]"
+                  >
+                    #Companies
+                  </th>
+                </Fragment>
               ))}
             </tr>
           </thead>
@@ -64,10 +84,10 @@ export function CrossTabTable({
                   const cell = matrix.cells?.[state]?.[team]
 
                   return (
-                    <td key={`${state}-${team}`} className="text-right">
-                      {cell && cell.rooftops > 0 ? (
-                        <div>
-                          {onDrilldown ? (
+                    <Fragment key={`${state}-${team}`}>
+                      <td key={`${state}-${team}-rooftops`} className="border-l border-slate-100 text-right">
+                        {cell && cell.rooftops > 0 ? (
+                          onDrilldown ? (
                             <button
                               type="button"
                               onClick={() => onDrilldown(state, teamId, team, 'rooftops')}
@@ -76,28 +96,34 @@ export function CrossTabTable({
                               {cell.rooftops.toLocaleString()}
                             </button>
                           ) : (
-                            <div className="font-semibold text-slate-950">
+                            <span className="font-semibold text-slate-950">
                               {cell.rooftops.toLocaleString()}
-                            </div>
-                          )}
-                          {onDrilldown ? (
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-slate-300">0</span>
+                        )}
+                      </td>
+                      <td key={`${state}-${team}-companies`} className="text-right">
+                        {cell && cell.companies > 0 ? (
+                          onDrilldown ? (
                             <button
                               type="button"
                               onClick={() => onDrilldown(state, teamId, team, 'companies')}
-                              className="mt-0.5 block w-full rounded-md px-1.5 py-0.5 text-[11px] text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
+                              className="rounded-md px-1.5 py-0.5 font-medium text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
                             >
                               {cell.companies.toLocaleString()}
                             </button>
                           ) : (
-                            <div className="text-[11px] text-slate-500">
+                            <span className="font-medium text-slate-700">
                               {cell.companies.toLocaleString()}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-300">0</span>
-                      )}
-                    </td>
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-slate-300">0</span>
+                        )}
+                      </td>
+                    </Fragment>
                   )
                 })}
               </tr>

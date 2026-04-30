@@ -50,6 +50,7 @@ const sections = [
 ]
 
 const hubspotReportLinks = {
+  dashboard: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807',
   relevantTam: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264400707',
   withoutDomains: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264448565',
   carsforsale: 'https://app-na2.hubspot.com/reports-dashboard/242626590/view/137527807/264400849',
@@ -552,12 +553,17 @@ function DashboardContent() {
           <section className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm text-slate-500">Real-time metrics from HubSpot company records</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
-                Intelligence Dashboard
+              <h1 className="mt-2 flex items-center gap-3 text-3xl font-semibold tracking-normal text-slate-950">
+                <a
+                  href={hubspotReportLinks.dashboard}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 hover:text-blue-700"
+                >
+                  TAM Distribution Dashboard
+                  <ExternalLink className="h-5 w-5" />
+                </a>
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Executive view of TAM size, market concentration, GTM ownership, vendor patterns, and CRM hygiene.
-              </p>
             </div>
           </section>
 
