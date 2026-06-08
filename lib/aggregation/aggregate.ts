@@ -8,6 +8,7 @@ import {
   RELEVANT_WEBSITE_STATUS,
   CARSFORSALE_DMS,
   UNITED_STATES_COUNTRY,
+  CONTRACT_CLOSED_GD_LEVELS,
 } from '../constants';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -160,6 +161,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
   const knownDomainRecords: MinifiedRecord[] = [];
   const franchiseRecords: MinifiedRecord[] = [];
   const independentRecords: MinifiedRecord[] = [];
+  const contractClosedRecords: MinifiedRecord[] = [];
 
   // ── Single pass ──
   for (const r of allRecords) {
@@ -182,6 +184,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
 
     knownDomainRecords.push(r);
     if (r.dn === CARSFORSALE_DMS) carsforsaleRecords.push(r);
+    if (r.lv !== null && CONTRACT_CLOSED_GD_LEVELS.has(r.lv)) contractClosedRecords.push(r);
 
     const isFranchise = r.td === 'Franchise';
     const isIndependent = r.td === 'Independent';
@@ -250,7 +253,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       relevantTAM: summarize(relevantRecords),
       withoutDomains: summarize(withoutDomainRecords),
       carsforsale: summarize(carsforsaleRecords),
-      contractClosed: summarize(knownDomainRecords),
+      contractClosed: summarize(contractClosedRecords),
       franchiseTAM: summarize(franchiseRecords),
       independentTAM: summarize(independentRecords),
     },

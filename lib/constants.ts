@@ -30,6 +30,9 @@ export const UNITED_STATES_COUNTRY = 'United States';
 
 // Carsforsale.com DMS name (exact casing from HubSpot)
 export const CARSFORSALE_DMS = 'Carsforsale.Com';
+// GD-Level values counted as "Contract Closed" (HubSpot filter: GD Level is any of …).
+// Add values here if the HubSpot report's filter 5 ever selects more than one.
+export const CONTRACT_CLOSED_GD_LEVELS = new Set<string>(['Contract Closed']);
 
 // HubSpot List API page size (max 100)
 export const PAGE_SIZE = 100;

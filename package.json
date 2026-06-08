@@ -2,11 +2,14 @@
   "name": "tam-dashboard",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "sync": "ts-node --project tsconfig.scripts.json scripts/sync.ts"
+    "dev": "NODE_OPTIONS=--no-experimental-webstorage next dev",
+    "build": "NODE_OPTIONS=--no-experimental-webstorage next build",
+    "start": "NODE_OPTIONS=--no-experimental-webstorage next start",
+    "sync": "NODE_OPTIONS=--no-experimental-webstorage ts-node --project tsconfig.scripts.json scripts/sync.ts"
   },
   "dependencies": {
     "@vercel/blob": "^0.27.0",

@@ -17,12 +17,17 @@ The synced dashboard payload intentionally includes row-level records so the bro
 ## Commands
 
 ```bash
-npm run sync          # fetch HubSpot -> aggregate -> upload to Vercel Blob
+npm run sync          # fetch HubSpot -> aggregate -> upload to Vercel Blob (ts-node, tsconfig.scripts.json)
 npm run dev           # start the Next.js dev server
 npm run build         # production build
+npm run start         # serve the production build
 ```
 
 No lint or test scripts exist yet.
+
+Use Node 20 (`.nvmrc`, `engines.node` in `package.json`). Every script is prefixed with
+`NODE_OPTIONS=--no-experimental-webstorage`; keep that flag when adding scripts, or the Next.js/ts-node
+process can break on Node 20's experimental Web Storage globals.
 
 ## Architecture
 
@@ -40,14 +45,38 @@ Next.js on Vercel:
   /api/sync-status   -> read sync-status.json from Blob -> return progress
   /api/trigger-sync  -> POST to GitHub Actions workflow_dispatch
 
-Browser:
-  page load      -> GET /api/data -> AggregatedData -> render reports
-  filter change  -> useMemo re-runs aggregate() on relevantRecords (no API call)
-  Refresh button -> POST /api/trigger-sync -> poll /api/sync-status
-  table click    -> open DrilldownModal from current filtered records
+Browser (app/page.tsx, driven by three hooks):
+  useDashboardData() -> GET /api/data -> AggregatedData (initial load)
+  useFilters(data)   -> applyFilters() re-slices relevantRecords + re-aggregates (no API call)
+  useSyncStatus()    -> polls /api/sync-status during a refresh
+  Refresh button     -> POST /api/trigger-sync -> useSyncStatus polls until done
+  table click        -> open DrilldownModal from current filtered records
 ```
 
+The `hooks/` directory (`useDashboardData`, `useFilters`, `useSyncStatus`) is the seam between the
+API/blob layer and the React UI. `useFilters` owns `FilterState` and calls `applyFilters()` — this is
+where the "filter client-side, never re-fetch" rule is enforced.
+
 **Why GitHub Actions instead of a serverless function:** HubSpot fetches take longer than Vercel Hobby function limits. GitHub Actions has enough runtime for the full List API pagination.
+
+### Active vs. Legacy Components
+
+`app/page.tsx` is the single dashboard page. It imports the `*New` components and aliases them to clean names:
+
+```ts
+import { BreakdownTable } from '@/components/BreakdownTableNew'
+import { FilterBar } from '@/components/FilterBarNew'
+```
+
+So the **active** UI files are: `BreakdownTableNew.tsx`, `FilterBarNew.tsx`, `CrossTabTable.tsx`,
+`DrilldownModal.tsx`, `SyncStatusBanner.tsx`. `MetricCard` is defined **inline** in `app/page.tsx`
+(around line 285), not imported.
+
+`components/BreakdownTable.tsx`, `components/FilterBar.tsx`, `components/MetricCard.tsx`, and
+`components/MetricCardNew.tsx` are **unused legacy files** — do not edit them expecting UI changes.
+
+> `AGENTS.md` is stale (it predates the `org_id` company-count and known-domain filter rules and still
+> describes `gd_id`-only counts and a `ws = "Relevant"` base). Treat this `CLAUDE.md` as the source of truth.
 
 ## Environment Variables
 
@@ -110,11 +139,15 @@ AND Company domain name is known
 | Relevant TAM | relevant-market base |
 | Without Domains | relevant-market base + missing/empty `dm` |
 | Carsforsale.com | relevant-market base + known `dm` + `dn = "Carsforsale.Com"` |
-| Contract Closed | relevant-market base + known `dm` |
+| Contract Closed | relevant-market base + known `dm` + `lv = "Contract Closed"` |
 | Franchise TAM | relevant-market base + known `dm` + `td = "Franchise"` |
 | Independent TAM | relevant-market base + known `dm` + `td = "Independent"` |
 
-Important: the "Contract Closed" card is currently the known-domain relevant TAM count, matching the requested HubSpot report filters. Do not filter it by `lv = "Contract Closed"` unless the business rule changes again.
+Important: the "Contract Closed" card filters known-domain records by `lv ∈ CONTRACT_CLOSED_GD_LEVELS`
+(a `Set` currently holding `"Contract Closed"`, defined in `lib/constants.ts`, matching HubSpot's
+"GD Level is any of …" filter). It is **not** the full known-domain TAM count. `aggregate()` builds a
+dedicated `contractClosedRecords` bucket in its single pass. If HubSpot's filter 5 selects more
+GD-Level values, add them to the set.
 
 ### Breakdown Reports
 

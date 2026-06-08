@@ -646,7 +646,7 @@ function DashboardContent() {
               metric={summaries.contractClosed}
               denominator={relevantTotal}
               tone="success"
-              helper="Relevant United States rooftops with a known company domain."
+              helper="Known-domain relevant TAM at GD Level = Contract Closed."
               reportHref={hubspotReportLinks.contractClosed}
             />
             <MetricCard
