@@ -25,9 +25,15 @@ npm run start         # serve the production build
 
 No lint or test scripts exist yet.
 
-Use Node 20 (`.nvmrc`, `engines.node` in `package.json`). Every script is prefixed with
-`NODE_OPTIONS=--no-experimental-webstorage`; keep that flag when adding scripts, or the Next.js/ts-node
-process can break on Node 20's experimental Web Storage globals.
+Use Node 22+ (`.nvmrc`, `engines.node` in `package.json`, and the `setup-node` pin in
+`.github/workflows/sync-hubspot.yml` must all agree). Every script is prefixed with
+`NODE_OPTIONS=--no-experimental-webstorage` to suppress Node 22's experimental Web Storage globals
+(`localStorage`/`sessionStorage`).
+
+Important: this flag is **only valid on Node 22.4+** — that is where `--experimental-webstorage` was
+introduced. On Node 20 the flag is unknown and `NODE_OPTIONS` rejects it outright (`exit code 9`), which
+previously broke the CI sync. If you change the Node version, keep `.nvmrc`, `engines.node`, and the
+workflow's `node-version` in lockstep, all at 22+.
 
 ## Architecture
 
