@@ -218,8 +218,18 @@ every client-side filter with no extra plumbing. The **group target list**
 (`segmentation.groups`) is canonical (sync-time) and is preserved unchanged through
 `applyFilters` — filtered records can't rebuild a group's true rooftop count.
 
-**Account view:** a dealer group counts as one account (distinct group names); single dealers
-count individually. Exposed as `segmentation.accounts`.
+**Account view:** a dealer group counts as one account; single dealers count individually.
+Group/account counts are **canonical and region-independent** — derived from `segmentation.groups`
+(seeded from the group object), so "Top 150" always reads **150** regardless of filters or region.
+Single-segment account counts come from `segmentation.accounts` (relevant base). The Enterprise and
+MM-Group metric cards lead with this group count; single-dealer cards stay rooftop-first.
+
+**Payload:** `uc`/`gn` are dropped from stored records after `tagSegments` (only needed during
+tagging) — `sg`/`gt`/`ss` carry segmentation client-side and the group list lives in
+`segmentation.groups`.
+
+**Export:** every metric card, breakdown table, the account-view table, the dealer-group target
+list, and the cross-tab have a CSV download (`lib/exportCsv.ts`) that opens in Excel/Sheets.
 
 Boundary resolutions (the framework's open items): SMB is ≤100-inclusive; Enterprise-A is
 11–15 and Enterprise-B is 16+; MM sub-sectors apply to both GFD and IGD; 50/50 type ties → IGD.
