@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import type { DealerGroupRow, SegmentCode } from '@/types/dashboard'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Download, Search } from 'lucide-react'
+import { downloadCsv } from '@/lib/exportCsv'
 
 const SEGMENT_LABEL: Record<string, string> = {
   MM_GROUP: 'Mid Market',
@@ -44,6 +45,14 @@ export function DealerGroupTable({ groups }: { groups: DealerGroupRow[] }) {
 
   const visible = expanded ? rows : rows.slice(0, 25)
 
+  const handleExport = () => {
+    downloadCsv(
+      'dealer-groups-aop-targets',
+      ['Group', 'Segment', 'Type', 'Rooftops', 'Members', 'Rank'],
+      rows.map((g) => [g.name, SEGMENT_LABEL[g.segment] ?? g.segment, g.type, g.rooftops, g.members, g.rank])
+    )
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 p-4">
@@ -54,15 +63,26 @@ export function DealerGroupTable({ groups }: { groups: DealerGroupRow[] }) {
               {rows.length.toLocaleString()} groups · one row per dealer group (canonical rooftop count &amp; Top-150 rank)
             </p>
           </div>
-          <div className="flex h-9 min-w-[200px] items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search group name"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            />
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 min-w-[200px] items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3">
+              <Search className="h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search group name"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleExport}
+              aria-label="Download dealer groups as CSV"
+              title="Download as Excel (CSV)"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+            >
+              <Download className="h-4 w-4" />
+            </button>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">

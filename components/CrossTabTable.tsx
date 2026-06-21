@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { AggregatedData, DrilldownMeasure } from '@/types/dashboard'
-import { ExternalLink } from 'lucide-react'
+import { Download, ExternalLink } from 'lucide-react'
+import { downloadCsv } from '@/lib/exportCsv'
 
 export function CrossTabTable({
   matrix,
@@ -14,6 +15,18 @@ export function CrossTabTable({
   const states = matrix.states || []
   const teams = matrix.teams || []
   const teamIds = matrix.teamIds || []
+
+  const handleExport = () => {
+    const headers = ['State', ...teams.flatMap((t) => [`${t} #Rooftops`, `${t} #Companies`])]
+    const rows = states.map((state) => [
+      state,
+      ...teams.flatMap((team) => {
+        const cell = matrix.cells?.[state]?.[team]
+        return [cell?.rooftops ?? 0, cell?.companies ?? 0]
+      }),
+    ])
+    downloadCsv('state-team-wise-relevant-tam', headers, rows)
+  }
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -32,6 +45,15 @@ export function CrossTabTable({
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
+          <button
+            type="button"
+            onClick={handleExport}
+            aria-label="Download State-Team matrix as CSV"
+            title="Download as Excel (CSV)"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
         </div>
         <p className="mt-1 text-xs text-slate-500">
           Each team is split into rooftop and company counts

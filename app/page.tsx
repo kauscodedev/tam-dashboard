@@ -8,6 +8,7 @@ import {
   Boxes,
   Building2,
   Database,
+  Download,
   ExternalLink,
   Grid2X2,
   Layers3,
@@ -25,6 +26,7 @@ import { SyncStatusBanner } from '@/components/SyncStatusBanner'
 import { useDashboardData } from '@/hooks/useDashboardData'
 import { useFilters } from '@/hooks/useFilters'
 import { useSyncStatus } from '@/hooks/useSyncStatus'
+import { downloadCsv, csvFilename } from '@/lib/exportCsv'
 import type { DrilldownMeasure, GroupRow, MinifiedRecord, SegmentCode, SegmentationData } from '@/types/dashboard'
 
 type CountMetric = { rooftops: number; companies: number }
@@ -292,6 +294,8 @@ function MetricCard({
   denominator,
   tone = 'default',
   reportHref,
+  accounts,
+  accountsUnit = 'groups',
 }: {
   title: string
   metric: CountMetric
@@ -299,7 +303,22 @@ function MetricCard({
   denominator?: number
   tone?: 'default' | 'risk' | 'success'
   reportHref?: string
+  accounts?: number
+  accountsUnit?: string
 }) {
+  // Group-based segments lead with the account/group count (region-independent),
+  // with rooftops shown as the supporting measure.
+  const isAccountsView = accounts !== undefined
+  const handleExport = () => {
+    if (isAccountsView) {
+      downloadCsv(csvFilename(title), ['Metric', 'Groups', 'Rooftops', 'Companies'], [[title, accounts!, metric.rooftops, metric.companies]])
+    } else {
+      const headers = ['Metric', 'Rooftops', 'Companies']
+      const row: Array<string | number> = [title, metric.rooftops, metric.companies]
+      if (denominator !== undefined) { headers.push('Share %'); row.push(((metric.rooftops / (denominator || 1)) * 100).toFixed(1)) }
+      downloadCsv(csvFilename(title), headers, [row])
+    }
+  }
   const toneClasses = {
     default: 'border-t-blue-600',
     risk: 'border-t-amber-500',
@@ -329,20 +348,39 @@ function MetricCard({
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}
+            <button
+              type="button"
+              onClick={handleExport}
+              aria-label={`Download ${title} as CSV`}
+              title="Download as Excel (CSV)"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
           </div>
           <p className="mt-3 text-4xl font-light tracking-normal text-slate-950">
-            {formatNumber(metric.rooftops)}
+            {formatNumber(isAccountsView ? accounts! : metric.rooftops)}
+            {isAccountsView && <span className="ml-2 text-base font-medium text-slate-400">{accountsUnit}</span>}
           </p>
         </div>
-        {denominator !== undefined && (
+        {denominator !== undefined && !isAccountsView && (
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${pillClasses[tone]}`}>
             {formatPercent(metric.rooftops, denominator)}
           </span>
         )}
       </div>
       <div className="mt-5 flex items-center justify-between gap-3 text-sm">
-        <span className="text-slate-500">{formatNumber(metric.companies)} companies</span>
-        <span className="font-medium text-slate-700">{averageRooftops(metric)} rooftops/company</span>
+        {isAccountsView ? (
+          <>
+            <span className="text-slate-500">{formatNumber(metric.rooftops)} rooftops</span>
+            <span className="font-medium text-slate-700">{formatNumber(metric.companies)} companies</span>
+          </>
+        ) : (
+          <>
+            <span className="text-slate-500">{formatNumber(metric.companies)} companies</span>
+            <span className="font-medium text-slate-700">{averageRooftops(metric)} rooftops/company</span>
+          </>
+        )}
       </div>
       {helper && <p className="mt-3 text-xs leading-5 text-slate-500">{helper}</p>}
     </article>
@@ -367,12 +405,37 @@ function SegmentSummaryTable({
   relevantTotal: number
 }) {
   const accountsMap = segmentation.accounts ?? ({} as SegmentationData['accounts'])
-  const totalAccounts = SEGMENT_SUMMARY_ROWS.reduce((sum, r) => sum + (accountsMap[r.code] ?? 0), 0)
+  const groupList = segmentation.groups ?? []
+  const GROUP_CODES = new Set<SegmentCode>(['MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C'])
+  // Group segments use the canonical group count (region-independent); singles use
+  // the relevant-base account count.
+  const accountFor = (code: SegmentCode) =>
+    GROUP_CODES.has(code) ? groupList.filter((g) => g.segment === code).length : (accountsMap[code] ?? 0)
+  const totalAccounts = SEGMENT_SUMMARY_ROWS.reduce((sum, r) => sum + accountFor(r.code), 0)
+  const handleExport = () => {
+    const rows = SEGMENT_SUMMARY_ROWS.map((r) => {
+      const rooftops = segmentation.bySegment[r.code]?.rooftops ?? 0
+      return [r.label, accountFor(r.code), rooftops, ((rooftops / (relevantTotal || 1)) * 100).toFixed(1)]
+    })
+    rows.push(['Total', totalAccounts, relevantTotal, '100.0'])
+    downloadCsv('tam-by-segment-account-view', ['Segment', 'Accounts', 'Rooftops', 'Share %'], rows)
+  }
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 p-4">
-        <h3 className="text-base font-semibold text-slate-950">TAM by Segment — Account View</h3>
-        <p className="mt-1 text-xs text-slate-500">A dealer group counts as one account; single dealers count individually.</p>
+      <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-950">TAM by Segment — Account View</h3>
+          <p className="mt-1 text-xs text-slate-500">A dealer group counts as one account; single dealers count individually.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          aria-label="Download account view as CSV"
+          title="Download as Excel (CSV)"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          <Download className="h-4 w-4" />
+        </button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -386,7 +449,7 @@ function SegmentSummaryTable({
           </thead>
           <tbody>
             {SEGMENT_SUMMARY_ROWS.map((r) => {
-              const accounts = accountsMap[r.code] ?? 0
+              const accounts = accountFor(r.code)
               const rooftops = segmentation.bySegment[r.code]?.rooftops ?? 0
               return (
                 <tr key={r.code} className="border-t border-slate-100">
@@ -590,6 +653,10 @@ function DashboardContent() {
 
   const { summaries, breakdowns, stateTeamMatrix, segmentation } = filteredData
   const relevantTotal = summaries.relevantTAM.rooftops
+  // Canonical group/account count per segment (from the group object — region-independent,
+  // so "Top 150" always reads 150 regardless of filters).
+  const groupAccounts = (code: SegmentCode) =>
+    (segmentation.groups ?? []).filter((g) => g.segment === code).length
   const lastSynced = filteredData.fetchedAt
     ? new Date(filteredData.fetchedAt).toLocaleString()
     : 'Unknown'
@@ -805,27 +872,27 @@ function DashboardContent() {
                 <MetricCard
                   title="Mid Market — Group"
                   metric={segmentation.bySegment.MM_GROUP}
-                  denominator={relevantTotal}
+                  accounts={groupAccounts('MM_GROUP')}
                   helper="Dealer groups with ≤10 rooftops (GFD + IGD)."
                 />
                 <MetricCard
                   title="Enterprise-A"
                   metric={segmentation.bySegment.ENT_A}
-                  denominator={relevantTotal}
+                  accounts={groupAccounts('ENT_A')}
                   helper="Groups with 11–15 rooftops."
                 />
                 <MetricCard
                   title="Enterprise-B"
                   metric={segmentation.bySegment.ENT_B}
-                  denominator={relevantTotal}
+                  accounts={groupAccounts('ENT_B')}
                   helper="Groups with 16+ rooftops, excluding Top 150."
                 />
                 <MetricCard
                   title="Enterprise-C"
                   metric={segmentation.bySegment.ENT_C}
-                  denominator={relevantTotal}
+                  accounts={groupAccounts('ENT_C')}
                   tone="success"
-                  helper="Top 150 dealer groups (Dealership Rank = Top 150)."
+                  helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
                 />
                 <MetricCard
                   title="SMB + MM"

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { DrilldownMeasure, GroupRow } from '@/types/dashboard'
-import { ChevronDown, ExternalLink, Search } from 'lucide-react'
+import { ChevronDown, Download, ExternalLink, Search } from 'lucide-react'
+import { downloadCsv, csvFilename } from '@/lib/exportCsv'
 
 const NO_VALUE = '(No value)'
 const NO_TEAM = '(No Team)'
@@ -55,6 +56,19 @@ export function BreakdownTable({
   )
   const visibleRows = expanded ? filteredRows : filteredRows.slice(0, maxRows)
 
+  const handleExport = () => {
+    const headers = showCompanies
+      ? ['Segment', 'Rooftops', 'Companies', 'Share %']
+      : ['Segment', 'Rooftops', 'Share %']
+    const exportRows = orderedRows(rows).map((row) => {
+      const share = totals.rooftops > 0 ? ((row.rooftops / totals.rooftops) * 100).toFixed(1) : '0.0'
+      return showCompanies
+        ? [row.label, row.rooftops, row.companies, share]
+        : [row.label, row.rooftops, share]
+    })
+    downloadCsv(csvFilename(title), headers, exportRows)
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 p-4">
@@ -74,6 +88,15 @@ export function BreakdownTable({
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               )}
+              <button
+                type="button"
+                onClick={handleExport}
+                aria-label={`Download ${title} as CSV`}
+                title="Download as Excel (CSV)"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {rows.length.toLocaleString()} rows · {totals.rooftops.toLocaleString()} rooftops

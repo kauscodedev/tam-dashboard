@@ -37,6 +37,14 @@ function subSectorFor(rooftops: number): SubSector {
   return '7-10';
 }
 
+/** A group's segment from its canonical rooftop count + Top-150 rank (region-independent). */
+function segmentForGroup(rooftops: number, isTop150: boolean): SegmentCode {
+  if (isTop150) return 'ENT_C';
+  if (rooftops > ENTERPRISE_A_ROOFTOP_MAX) return 'ENT_B';
+  if (rooftops > MID_MARKET_ROOFTOP_MAX) return 'ENT_A';
+  return 'MM_GROUP';
+}
+
 type GroupVerdict = { sg: SegmentCode; gt: GroupType; ss: SubSector | null; rooftops: number };
 
 // ─── Tagging (sync time) ────────────────────────────────────────────────────
@@ -51,13 +59,13 @@ type GroupVerdict = { sg: SegmentCode; gt: GroupType; ss: SubSector | null; roof
  */
 export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): DealerGroupRow[] {
   // 1. Canonical group data keyed by normalized name (merge duplicate records).
-  const groupMap = new Map<string, { rooftops: number | null; rank: string | null }>();
+  const groupMap = new Map<string, { rooftops: number | null; rank: string | null; name: string }>();
   for (const g of groups) {
     const key = normalizeGroupName(g.name);
     if (!key) continue;
     const existing = groupMap.get(key);
     if (!existing) {
-      groupMap.set(key, { rooftops: g.rooftops, rank: g.rank });
+      groupMap.set(key, { rooftops: g.rooftops, rank: g.rank, name: g.name.trim() });
     } else {
       existing.rooftops = Math.max(existing.rooftops ?? 0, g.rooftops ?? 0) || existing.rooftops;
       if (g.rank === TOP_150_RANK) existing.rank = TOP_150_RANK;
@@ -76,19 +84,15 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
     else if (r.td === 'Independent') t.ind++;
   }
 
-  // 3. Resolve each group's verdict once.
+  // 3. Resolve each group's verdict once (for groups that have member records).
   const verdict = new Map<string, GroupVerdict>();
   for (const [key, t] of tally) {
     const meta = groupMap.get(key);
     const rollup = meta?.rooftops ?? null;
     const rooftops = rollup != null && rollup > 0 ? rollup : t.n;
-    const rank = meta?.rank ?? null;
+    const isTop150 = meta?.rank === TOP_150_RANK;
     const gt: GroupType = t.fr > t.ind ? 'GFD' : 'IGD'; // 50/50 tie -> IGD
-    let sg: SegmentCode;
-    if (rank === TOP_150_RANK) sg = 'ENT_C';
-    else if (rooftops > ENTERPRISE_A_ROOFTOP_MAX) sg = 'ENT_B';
-    else if (rooftops > MID_MARKET_ROOFTOP_MAX) sg = 'ENT_A';
-    else sg = 'MM_GROUP';
+    const sg = segmentForGroup(rooftops, isTop150);
     verdict.set(key, { sg, gt, ss: sg === 'MM_GROUP' ? subSectorFor(rooftops) : null, rooftops });
   }
 
@@ -111,18 +115,35 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
     r.ss = null;
   }
 
-  // 5. Canonical dealer-group target list (one row per group), sorted by size.
+  // 5. Canonical dealer-group target list. Seeded from the group OBJECT so the
+  //    count is region-independent ("Top 150" always shows 150, even for groups
+  //    with no rooftops in the relevant base). Orphan groups that appear only on
+  //    company records (no group-object row) are appended.
   const groupRows: DealerGroupRow[] = [];
-  for (const [key, v] of verdict) {
-    const t = tally.get(key)!;
+  const seen = new Set<string>();
+  for (const [key, meta] of groupMap) {
+    seen.add(key);
+    const t = tally.get(key);
+    const isTop150 = meta.rank === TOP_150_RANK;
+    const rollup = meta.rooftops ?? null;
+    const rooftops = rollup != null && rollup > 0 ? rollup : t ? t.n : 0;
+    // Skip empty shells (no rooftops AND no members) unless they're ranked Top 150.
+    if (rooftops <= 0 && !isTop150) continue;
+    const gt: GroupType = t ? (t.fr >= t.ind ? 'GFD' : 'IGD') : 'GFD';
     groupRows.push({
-      name: t.name,
-      segment: v.sg,
-      type: v.gt,
-      rooftops: v.rooftops,
-      rank: groupMap.get(key)?.rank === TOP_150_RANK ? TOP_150_RANK : '',
-      members: t.n,
+      name: meta.name || (t?.name ?? key),
+      segment: segmentForGroup(rooftops, isTop150),
+      type: gt,
+      rooftops,
+      rank: isTop150 ? TOP_150_RANK : '',
+      members: t ? t.n : 0,
     });
+  }
+  // Orphan groups present on company records but missing from the group object.
+  for (const [key, v] of verdict) {
+    if (seen.has(key)) continue;
+    const t = tally.get(key)!;
+    groupRows.push({ name: t.name, segment: v.sg, type: v.gt, rooftops: v.rooftops, rank: '', members: t.n });
   }
   groupRows.sort((a, b) => b.rooftops - a.rooftops);
   return groupRows;

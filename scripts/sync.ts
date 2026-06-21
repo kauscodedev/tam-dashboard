@@ -94,6 +94,13 @@ async function main(): Promise<void> {
     const dealerGroups = await fetchDealerGroups();
     console.log(`[Sync] Tagging segments using ${dealerGroups.length} dealer groups...`);
     const dealerGroupRows = tagSegments(allRecords, dealerGroups);
+    // `uc` (used cars) and `gn` (group name) are only needed during tagging above.
+    // Drop them from the stored payload — the baked `sg`/`gt`/`ss` tags carry the
+    // segmentation client-side, and the group target list lives in `segmentation.groups`.
+    for (const r of allRecords) {
+      delete (r as Partial<typeof r>).uc;
+      delete (r as Partial<typeof r>).gn;
+    }
 
     // Step 4: Aggregate
     console.log(`\n[Sync] Aggregating ${allRecords.length} records...`);
