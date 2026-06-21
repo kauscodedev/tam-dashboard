@@ -14,6 +14,18 @@ type FilterConfig = {
   optionLabels?: string[]
 }
 
+// AOP segment codes → display order + labels (shared with the segmentation section).
+const SEGMENT_ORDER = ['SMB', 'MM_SINGLE', 'MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'UNSIZED']
+const SEGMENT_LABEL: Record<string, string> = {
+  SMB: 'SMB',
+  MM_SINGLE: 'Mid Market — Single',
+  MM_GROUP: 'Mid Market — Group',
+  ENT_A: 'Enterprise-A',
+  ENT_B: 'Enterprise-B',
+  ENT_C: 'Enterprise-C (Top 150)',
+  UNSIZED: 'Unsized',
+}
+
 export function FilterBar({
   filters,
   setFilter,
@@ -75,6 +87,17 @@ export function FilterBar({
       optionLabels: filterOptions.lifecycleStageNames ?? [],
     },
   ]
+
+  const segmentOptions = SEGMENT_ORDER.filter((code) => (filterOptions.segments ?? []).includes(code))
+  if (segmentOptions.length > 0) {
+    filterConfigs.push({
+      key: 'segment',
+      label: 'AOP Segment',
+      allLabel: 'All segments',
+      options: segmentOptions,
+      optionLabels: segmentOptions.map((code) => SEGMENT_LABEL[code] ?? code),
+    })
+  }
 
   const activeFilters = filterConfigs
     .map((config) => {

@@ -10,6 +10,7 @@ import {
   UNITED_STATES_COUNTRY,
   CONTRACT_CLOSED_GD_LEVELS,
 } from '../constants';
+import { buildSegmentation } from './segment';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -280,6 +281,8 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       cells,
     },
 
+    segmentation: buildSegmentation(relevantRecords),
+
     filterOptions: {
       orgTiers: [...rtByOrgTier.keys()].filter((k) => k !== '(No value)').sort(),
       teamIds,
@@ -292,6 +295,7 @@ export function aggregate(allRecords: MinifiedRecord[], labels: LabelMap): Aggre
       lifecycleStageNames: [...rtByLifecycle.keys()]
         .filter((k) => k !== '(No value)')
         .map(resolveLifecycle),
+      segments: [...new Set(relevantRecords.map((r) => r.sg).filter((v): v is NonNullable<typeof v> => v != null))],
     },
   };
 }

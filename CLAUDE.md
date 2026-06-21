@@ -192,6 +192,40 @@ All breakdown reports use the known-domain relevant-market base.
 
 The UI renders each team as two subcolumns: `#Rooftops` and `#Companies`.
 
+## TAM Segmentation (AOP)
+
+RevOps' TAM Segmentation framework, surfaced as the **AOP Segments** section.
+
+**Inputs (synced fields):** `uc` (`number_of_used_cars`) and `gn` (`dealership_group_name`)
+were added to `FIELD_MAP`/`MinifiedRecord`. The **Dealership Group Names** custom object
+(`2-169112502`, see `DEALER_GROUP_OBJECT_TYPE`) is fetched separately by
+`lib/hubspot/fetchDealerGroups.ts` for each group's canonical `rooftops` rollup and
+`dealership_rank`. It has no gd_id/org_id, so companies join to groups by **normalized
+`dealership_group_name`** (`normalizeGroupName`).
+
+**Tagging (`lib/aggregation/segment.ts → tagSegments`)** runs once at sync and bakes three
+tags onto every record (`sg`/`gt`/`ss`), then returns the canonical group list:
+
+- **Single** (`gn` blank): `uc <= 100` → `SMB`; `> 100` → `MM_SINGLE`; missing → `UNSIZED`.
+- **Group** (`gn` present): sized by the group's canonical rooftops (group-object `rooftops`,
+  falling back to member-record count when 0/missing). `> 15` → `ENT_B`; `11–15` → `ENT_A`;
+  `<= 10` → `MM_GROUP`; `dealership_rank = "Top 150"` → `ENT_C` (overrides). Group type `gt` is
+  the majority of `td` across members (50/50 tie → IGD). MM groups also get a rooftop
+  sub-sector `ss` (`1` / `2-3` / `4-6` / `7-10`).
+
+Because the tags are baked onto records, `buildSegmentation()` recomputes segment counts on
+every client-side filter with no extra plumbing. The **group target list**
+(`segmentation.groups`) is canonical (sync-time) and is preserved unchanged through
+`applyFilters` — filtered records can't rebuild a group's true rooftop count.
+
+**Account view:** a dealer group counts as one account (distinct group names); single dealers
+count individually. Exposed as `segmentation.accounts`.
+
+Boundary resolutions (the framework's open items): SMB is ≤100-inclusive; Enterprise-A is
+11–15 and Enterprise-B is 16+; MM sub-sectors apply to both GFD and IGD; 50/50 type ties → IGD.
+Segment counts cover the **relevant base** (so they sum to Relevant TAM rooftops), not the
+known-domain base. A global **AOP Segment** filter (`FilterState.segment`, key `sg`) was added.
+
 ## Global Filters
 
 Client-side filters live in `FilterState` and `lib/aggregation/filters.ts`.
@@ -205,6 +239,7 @@ Current filters:
 - State (`st`)
 - CRM Platform (`cp`)
 - Lifecycle Stage (`ls`)
+- AOP Segment (`sg`)
 
 On filter changes, `applyFilters()` slices `data.relevantRecords`, re-runs `aggregate()`, preserves the original `fetchedAt`, and keeps original `filterOptions`. Do not call `/api/data` for filter changes.
 

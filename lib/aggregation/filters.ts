@@ -13,6 +13,7 @@ export function applyFilters(
     state,
     crmPlatform,
     lifecycleStage,
+    segment,
   } = filters;
 
   if (
@@ -22,7 +23,8 @@ export function applyFilters(
     !dealershipType &&
     !state &&
     !crmPlatform &&
-    !lifecycleStage
+    !lifecycleStage &&
+    !segment
   ) {
     return data;
   }
@@ -35,12 +37,17 @@ export function applyFilters(
     if (state && record.st !== state) return false;
     if (crmPlatform && record.cp !== crmPlatform) return false;
     if (lifecycleStage && record.ls !== lifecycleStage) return false;
+    if (segment && record.sg !== segment) return false;
     return true;
   });
 
+  const result = aggregate(filtered, data.labels);
   return {
-    ...aggregate(filtered, data.labels),
+    ...result,
     fetchedAt: data.fetchedAt,
     filterOptions: data.filterOptions,
+    // The dealer-group target list is canonical (sync-time); records can't rebuild
+    // a group's true rooftop count under a filter, so carry it through unchanged.
+    segmentation: { ...result.segmentation, groups: data.segmentation.groups },
   };
 }

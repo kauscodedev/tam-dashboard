@@ -21,6 +21,8 @@
 import { put } from '@vercel/blob';
 import { fetchMetadata } from '../lib/hubspot/fetchMetadata';
 import { fetchAllCompanies } from '../lib/hubspot/fetchAllCompanies';
+import { fetchDealerGroups } from '../lib/hubspot/fetchDealerGroups';
+import { tagSegments } from '../lib/aggregation/segment';
 import { aggregate } from '../lib/aggregation/aggregate';
 import type { SyncStatus, AggregatedData } from '../types/dashboard';
 import { PROGRESS_UPDATE_INTERVAL } from '../lib/constants';
@@ -88,9 +90,16 @@ async function main(): Promise<void> {
       }
     });
 
+    // Step 3b: Fetch dealer-group records and bake AOP segment tags onto companies.
+    const dealerGroups = await fetchDealerGroups();
+    console.log(`[Sync] Tagging segments using ${dealerGroups.length} dealer groups...`);
+    const dealerGroupRows = tagSegments(allRecords, dealerGroups);
+
     // Step 4: Aggregate
     console.log(`\n[Sync] Aggregating ${allRecords.length} records...`);
     const aggregated = aggregate(allRecords, labels);
+    // Attach the canonical group target list (computed once; not record-derived).
+    aggregated.segmentation.groups = dealerGroupRows;
 
     const { summaries } = aggregated;
     console.log('\n[Sync] ── Aggregation summary ──────────────────────────');
@@ -101,6 +110,9 @@ async function main(): Promise<void> {
     console.log(`  Contract Closed:   ${summaries.contractClosed.rooftops.toLocaleString()} rooftops`);
     console.log(`  Franchise TAM:     ${summaries.franchiseTAM.rooftops.toLocaleString()} rooftops`);
     console.log(`  Independent TAM:   ${summaries.independentTAM.rooftops.toLocaleString()} rooftops`);
+    const seg = aggregated.segmentation.bySegment;
+    console.log('  ── AOP Segmentation (rooftops) ──');
+    console.log(`  SMB ${seg.SMB.rooftops.toLocaleString()} | MM-single ${seg.MM_SINGLE.rooftops.toLocaleString()} | MM-group ${seg.MM_GROUP.rooftops.toLocaleString()} | EntA ${seg.ENT_A.rooftops.toLocaleString()} | EntB ${seg.ENT_B.rooftops.toLocaleString()} | EntC ${seg.ENT_C.rooftops.toLocaleString()} | Unsized ${seg.UNSIZED.rooftops.toLocaleString()}`);
     console.log('─────────────────────────────────────────────────────────\n');
 
     // Sanity check: warn if numbers are way off from expected

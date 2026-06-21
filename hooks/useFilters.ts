@@ -13,6 +13,7 @@ export function useFilters(data: AggregatedData | null) {
     state: null,
     crmPlatform: null,
     lifecycleStage: null,
+    segment: null,
   })
 
   const filteredData = useMemo(() => {
@@ -33,6 +34,7 @@ export function useFilters(data: AggregatedData | null) {
       state: null,
       crmPlatform: null,
       lifecycleStage: null,
+      segment: null,
     })
   }
 

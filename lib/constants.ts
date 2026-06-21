@@ -19,7 +19,23 @@ export const FIELD_MAP = {
   website_status: 'ws',
   dms_name: 'dn',
   country_dropdown: 'co',
+  number_of_used_cars: 'uc',
+  dealership_group_name: 'gn',
 } as const;
+
+// ── TAM Segmentation framework (RevOps) ──────────────────────────────────────
+// Custom object holding one record per dealer group, with the canonical rooftop
+// rollup and the curated Top-150 rank. It has no gd_id/org_id, so company→group
+// joins are done by normalized `dealship_group_name`.
+export const DEALER_GROUP_OBJECT_TYPE = '2-169112502';
+// Single-dealer used-car threshold: <= SMB, > Mid Market (resolves the framework's
+// open "exactly 100" boundary as SMB-inclusive).
+export const SMB_USED_CAR_MAX = 100;
+// Rooftop boundaries for group sizing.
+export const MID_MARKET_ROOFTOP_MAX = 10; // <=10 rooftops => Mid Market group
+export const ENTERPRISE_A_ROOFTOP_MAX = 15; // 11-15 => Enterprise-A; 16+ => Enterprise-B
+// dealership_rank enum value that marks a Top-150 group => Enterprise-C.
+export const TOP_150_RANK = 'Top 150';
 
 export type HubSpotFieldKey = keyof typeof FIELD_MAP;
 export const REQUIRED_PROPERTIES = Object.keys(FIELD_MAP) as HubSpotFieldKey[];

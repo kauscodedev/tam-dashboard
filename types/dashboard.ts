@@ -17,6 +17,62 @@ export interface MinifiedRecord {
   ws: string | null; // website_status
   dn: string | null; // dms_name
   co: string | null; // country_dropdown
+  uc: string | null; // number_of_used_cars (single-dealer sizing)
+  gn: string | null; // dealership_group_name (blank = single dealer)
+  // ── Baked TAM-segmentation tags (computed at sync via tagSegments) ──
+  sg: SegmentCode | null; // top-level AOP segment
+  gt: GroupType | null;   // group dealership type (GFD/IGD), groups only
+  ss: SubSector | null;   // Mid Market group rooftop sub-sector, groups only
+}
+
+// ── TAM Segmentation framework ────────────────────────────────────────────────
+export type SegmentCode =
+  | 'SMB'        // single dealer, <= 100 used cars
+  | 'MM_SINGLE'  // single dealer, > 100 used cars
+  | 'MM_GROUP'   // group, <= 10 rooftops
+  | 'ENT_A'      // group, 11-15 rooftops
+  | 'ENT_B'      // group, 16+ rooftops (excl. Top 150)
+  | 'ENT_C'      // Top 150 group
+  | 'UNSIZED';   // single dealer with no used-car count
+export type GroupType = 'GFD' | 'IGD';
+export type SubSector = '1' | '2-3' | '4-6' | '7-10';
+
+/** One dealer-group record from the Dealership Group Names custom object. */
+export interface DealerGroup {
+  name: string;            // raw dealship_group_name
+  rooftops: number | null; // #Rooftops rollup
+  rank: string | null;     // dealership_rank ("Top 150" or null)
+}
+
+export interface CountMetric {
+  rooftops: number;
+  companies: number;
+}
+
+/** One dealer group as an AOP planning/target row (group counted as one account). */
+export interface DealerGroupRow {
+  name: string;        // display name
+  segment: SegmentCode; // MM_GROUP | ENT_A | ENT_B | ENT_C
+  type: GroupType;     // GFD / IGD
+  rooftops: number;    // canonical group size (group-object rollup, or member fallback)
+  rank: string;        // "Top 150" or ""
+  members: number;     // member rooftop records in the synced relevant base
+}
+
+export interface SegmentationData {
+  /** false when the loaded blob predates segmentation fields (records lack `sg`). */
+  available: boolean;
+  bySegment: Record<SegmentCode, CountMetric>;
+  /** Account-level counts: a dealer group counts once. Singles count individually. */
+  accounts: Record<SegmentCode, number>;
+  /** Mid Market group split by dealership type. */
+  mmGroupByType: Record<GroupType, CountMetric>;
+  /** Mid Market group rooftop sub-sectors, per group type (rows for a BreakdownTable). */
+  mmSubSectors: Record<GroupType, GroupRow[]>;
+  /** Enterprise tiers A/B/C as breakdown rows. */
+  enterpriseTiers: GroupRow[];
+  /** Canonical dealer-group target list (computed at sync; preserved across filters). */
+  groups: DealerGroupRow[];
 }
 
 export interface GroupRow {
@@ -36,6 +92,7 @@ export interface FilterState {
   state: string | null;
   crmPlatform: string | null;
   lifecycleStage: string | null;
+  segment: string | null; // SegmentCode (AOP segmentation)
 }
 
 export interface LabelMap {
@@ -77,6 +134,7 @@ export interface AggregatedData {
     cells: Record<string, Record<string, { rooftops: number; companies: number }>>;
     // cells[state][teamName] = { rooftops, companies }
   };
+  segmentation: SegmentationData;
   filterOptions: {
     orgTiers: string[];
     teamIds: string[];   // raw IDs (used as filter keys)
@@ -87,6 +145,7 @@ export interface AggregatedData {
     crmPlatforms: string[];
     lifecycleStages: string[];
     lifecycleStageNames: string[];
+    segments: string[]; // SegmentCode values present in the data
   };
 }
 

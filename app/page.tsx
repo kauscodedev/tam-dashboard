@@ -5,6 +5,7 @@ import {
   Activity,
   AlertCircle,
   ArrowUpRight,
+  Boxes,
   Building2,
   Database,
   ExternalLink,
@@ -17,13 +18,14 @@ import {
 } from 'lucide-react'
 import { BreakdownTable } from '@/components/BreakdownTableNew'
 import { CrossTabTable } from '@/components/CrossTabTable'
+import { DealerGroupTable } from '@/components/DealerGroupTable'
 import { DrilldownModal } from '@/components/DrilldownModal'
 import { FilterBar } from '@/components/FilterBarNew'
 import { SyncStatusBanner } from '@/components/SyncStatusBanner'
 import { useDashboardData } from '@/hooks/useDashboardData'
 import { useFilters } from '@/hooks/useFilters'
 import { useSyncStatus } from '@/hooks/useSyncStatus'
-import type { DrilldownMeasure, GroupRow, MinifiedRecord } from '@/types/dashboard'
+import type { DrilldownMeasure, GroupRow, MinifiedRecord, SegmentCode, SegmentationData } from '@/types/dashboard'
 
 type CountMetric = { rooftops: number; companies: number }
 type DrilldownField = keyof Pick<MinifiedRecord, 'ot' | 'td' | 'cn' | 'cp' | 'st' | 'tm' | 'pn' | 'ls'>
@@ -42,6 +44,7 @@ type DrilldownModalState = {
 
 const sections = [
   { id: 'overview', label: 'Dashboard', icon: Grid2X2 },
+  { id: 'segmentation', label: 'AOP Segments', icon: Boxes },
   { id: 'market', label: 'Market Segments', icon: Layers3 },
   { id: 'geography', label: 'Geography', icon: Map },
   { id: 'systems', label: 'Systems & Vendors', icon: Database },
@@ -346,6 +349,67 @@ function MetricCard({
   )
 }
 
+const SEGMENT_SUMMARY_ROWS: { code: SegmentCode; label: string }[] = [
+  { code: 'SMB', label: 'SMB — single ≤100 cars' },
+  { code: 'MM_SINGLE', label: 'Mid Market — single >100' },
+  { code: 'MM_GROUP', label: 'Mid Market — group ≤10 rooftops' },
+  { code: 'ENT_A', label: 'Enterprise-A — 11–15 rooftops' },
+  { code: 'ENT_B', label: 'Enterprise-B — 16+ rooftops' },
+  { code: 'ENT_C', label: 'Enterprise-C — Top 150' },
+  { code: 'UNSIZED', label: 'Unsized — no car data' },
+]
+
+function SegmentSummaryTable({
+  segmentation,
+  relevantTotal,
+}: {
+  segmentation: SegmentationData
+  relevantTotal: number
+}) {
+  const accountsMap = segmentation.accounts ?? ({} as SegmentationData['accounts'])
+  const totalAccounts = SEGMENT_SUMMARY_ROWS.reduce((sum, r) => sum + (accountsMap[r.code] ?? 0), 0)
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 p-4">
+        <h3 className="text-base font-semibold text-slate-950">TAM by Segment — Account View</h3>
+        <p className="mt-1 text-xs text-slate-500">A dealer group counts as one account; single dealers count individually.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-2 text-left">Segment</th>
+              <th className="px-4 py-2 text-right">Accounts</th>
+              <th className="px-4 py-2 text-right">Rooftops</th>
+              <th className="px-4 py-2 text-right">% Rooftops</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SEGMENT_SUMMARY_ROWS.map((r) => {
+              const accounts = accountsMap[r.code] ?? 0
+              const rooftops = segmentation.bySegment[r.code]?.rooftops ?? 0
+              return (
+                <tr key={r.code} className="border-t border-slate-100">
+                  <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-slate-950">{formatNumber(accounts)}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">{formatNumber(rooftops)}</td>
+                  <td className="px-4 py-2 text-right text-slate-500">{formatPercent(rooftops, relevantTotal)}</td>
+                </tr>
+              )
+            })}
+            <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+              <td className="px-4 py-2 text-slate-900">Total</td>
+              <td className="px-4 py-2 text-right text-slate-900">{formatNumber(totalAccounts)}</td>
+              <td className="px-4 py-2 text-right text-slate-900">{formatNumber(relevantTotal)}</td>
+              <td className="px-4 py-2 text-right text-slate-500">100.0%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 function InsightList({
   title,
   rows,
@@ -524,7 +588,7 @@ function DashboardContent() {
     )
   }
 
-  const { summaries, breakdowns, stateTeamMatrix } = filteredData
+  const { summaries, breakdowns, stateTeamMatrix, segmentation } = filteredData
   const relevantTotal = summaries.relevantTAM.rooftops
   const lastSynced = filteredData.fetchedAt
     ? new Date(filteredData.fetchedAt).toLocaleString()
@@ -567,6 +631,22 @@ function DashboardContent() {
       segmentColumn: 'State / Team',
       measure,
       records,
+    })
+  }
+  // Segmentation drilldowns run over the relevant base (NOT known-domain-only),
+  // matching how the segmentation cards/tables are counted.
+  const openSegmentDrilldown = (
+    reportTitle: string,
+    segmentLabel: string,
+    predicate: (record: MinifiedRecord) => boolean,
+    measure: DrilldownMeasure
+  ) => {
+    setDrilldown({
+      reportTitle,
+      segmentLabel,
+      segmentColumn: 'AOP Segment',
+      measure,
+      records: filteredData.relevantRecords.filter(predicate),
     })
   }
 
@@ -689,6 +769,136 @@ function DashboardContent() {
               </a>
             </article>
           </div>
+        </section>
+
+        <section>
+          <SectionHeader
+            id="segmentation"
+            icon={<Boxes className="h-4 w-4" />}
+            title="TAM Segmentation (AOP)"
+            description="Spyne's RevOps framework split: single dealers sized by used-car count (SMB ≤100 / Mid Market >100); dealer groups sized by rooftop count and Top-150 rank (Mid Market ≤10, Enterprise-A 11–15, Enterprise-B 16+, Enterprise-C = Top 150). Counts cover the filtered Relevant TAM."
+          />
+          {!segmentation.available ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 shadow-sm">
+              <p className="font-semibold">Segmentation awaits a fresh sync.</p>
+              <p className="mt-1 leading-6">
+                The currently loaded data predates the AOP segmentation fields. Click
+                <span className="font-medium"> Refresh data</span> (or run the HubSpot sync) to populate
+                used-car counts, dealer-group names, and Top-150 ranks.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="SMB"
+                  metric={segmentation.bySegment.SMB}
+                  denominator={relevantTotal}
+                  helper="Single dealers with ≤100 used cars."
+                />
+                <MetricCard
+                  title="Mid Market — Single"
+                  metric={segmentation.bySegment.MM_SINGLE}
+                  denominator={relevantTotal}
+                  helper="Standalone dealers with >100 used cars."
+                />
+                <MetricCard
+                  title="Mid Market — Group"
+                  metric={segmentation.bySegment.MM_GROUP}
+                  denominator={relevantTotal}
+                  helper="Dealer groups with ≤10 rooftops (GFD + IGD)."
+                />
+                <MetricCard
+                  title="Enterprise-A"
+                  metric={segmentation.bySegment.ENT_A}
+                  denominator={relevantTotal}
+                  helper="Groups with 11–15 rooftops."
+                />
+                <MetricCard
+                  title="Enterprise-B"
+                  metric={segmentation.bySegment.ENT_B}
+                  denominator={relevantTotal}
+                  helper="Groups with 16+ rooftops, excluding Top 150."
+                />
+                <MetricCard
+                  title="Enterprise-C"
+                  metric={segmentation.bySegment.ENT_C}
+                  denominator={relevantTotal}
+                  tone="success"
+                  helper="Top 150 dealer groups (Dealership Rank = Top 150)."
+                />
+                <MetricCard
+                  title="SMB + MM"
+                  metric={{
+                    rooftops:
+                      segmentation.bySegment.SMB.rooftops +
+                      segmentation.bySegment.MM_SINGLE.rooftops +
+                      segmentation.bySegment.MM_GROUP.rooftops,
+                    companies:
+                      segmentation.bySegment.SMB.companies +
+                      segmentation.bySegment.MM_SINGLE.companies +
+                      segmentation.bySegment.MM_GROUP.companies,
+                  }}
+                  denominator={relevantTotal}
+                  helper="Combined non-enterprise volume segment."
+                />
+                <MetricCard
+                  title="Unsized"
+                  metric={segmentation.bySegment.UNSIZED}
+                  denominator={relevantTotal}
+                  tone="risk"
+                  helper="Single dealers missing a used-car count — enrich to classify."
+                />
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                <BreakdownTable
+                  title="Enterprise Tiers"
+                  rows={segmentation.enterpriseTiers}
+                  maxRows={3}
+                  onDrilldown={(row, measure) =>
+                    openSegmentDrilldown(
+                      'Enterprise Tiers',
+                      row.label,
+                      (record) => record.sg === row.key,
+                      measure
+                    )
+                  }
+                />
+                <BreakdownTable
+                  title="Mid Market Group — GFD Sub-Sectors"
+                  rows={segmentation.mmSubSectors.GFD}
+                  maxRows={4}
+                  onDrilldown={(row, measure) =>
+                    openSegmentDrilldown(
+                      'Mid Market GFD Sub-Sectors',
+                      row.label,
+                      (record) => record.sg === 'MM_GROUP' && record.gt === 'GFD' && record.ss === row.key,
+                      measure
+                    )
+                  }
+                />
+                <BreakdownTable
+                  title="Mid Market Group — IGD Sub-Sectors"
+                  rows={segmentation.mmSubSectors.IGD}
+                  maxRows={4}
+                  onDrilldown={(row, measure) =>
+                    openSegmentDrilldown(
+                      'Mid Market IGD Sub-Sectors',
+                      row.label,
+                      (record) => record.sg === 'MM_GROUP' && record.gt === 'IGD' && record.ss === row.key,
+                      measure
+                    )
+                  }
+                />
+              </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                <SegmentSummaryTable segmentation={segmentation} relevantTotal={relevantTotal} />
+                <DealerGroupTable groups={segmentation.groups ?? []} />
+              </div>
+            </>
+          )}
         </section>
 
         <section>
