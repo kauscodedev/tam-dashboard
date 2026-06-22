@@ -390,33 +390,43 @@ function MetricCard({
           </span>
         )}
       </div>
-      <div className="mt-4 space-y-1.5 text-sm">
-        {/* Group-level split (only for group segments where groupSplit is provided) */}
-        {groupSplit && (
-          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-            <span className="font-medium text-slate-700">Groups</span>
-            <span>{formatNumber(groupSplit.franchise)} GFD · {formatNumber(groupSplit.independent)} IGD</span>
-          </div>
-        )}
-        {/* Rooftop-level split */}
-        {split ? (
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="font-medium text-slate-700">
-              {formatNumber(split.rooftops ?? (isAccountsView ? metric.rooftops : 0))} rooftops
-            </span>
-            <span className="text-slate-500">{formatNumber(split.franchise)} Fr · {formatNumber(split.independent)} Ind</span>
-          </div>
-        ) : isAccountsView ? (
-          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-            <span>{formatNumber(metric.rooftops)} rooftops</span>
-            <span>{formatNumber(metric.companies)} companies</span>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-            <span>{formatNumber(metric.companies)} companies</span>
-            <span>{averageRooftops(metric)} rooftops/co.</span>
-          </div>
-        )}
+      {/* Inline split table */}
+      <div className="mt-4">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+              <th className="pb-1 text-left font-medium w-[40%]"></th>
+              <th className="pb-1 text-right font-medium">Fr / GFD</th>
+              <th className="pb-1 text-right font-medium">Ind / IGD</th>
+              <th className="pb-1 text-right font-medium text-slate-600">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groupSplit && (
+              <tr className="border-t border-slate-100">
+                <td className="py-0.5 font-medium text-slate-600">Groups</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.franchise)}</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.independent)}</td>
+                <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(groupSplit.franchise + groupSplit.independent)}</td>
+              </tr>
+            )}
+            {split ? (
+              <tr className="border-t border-slate-100">
+                <td className="py-0.5 font-medium text-slate-600">
+                  {formatNumber(split.rooftops ?? (isAccountsView ? metric.rooftops : metric.rooftops))} rooftops
+                </td>
+                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.franchise)}</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.independent)}</td>
+                <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(split.franchise + split.independent)}</td>
+              </tr>
+            ) : !groupSplit && (
+              <tr className="border-t border-slate-100">
+                <td className="py-0.5 text-slate-500">{formatNumber(metric.companies)} companies</td>
+                <td colSpan={3} className="py-0.5 text-right tabular-nums text-slate-500">{averageRooftops(metric)} rt/co.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
       {helper && <p className="mt-3 text-xs leading-5 text-slate-500">{helper}</p>}
       {footer && <div className="mt-4 border-t border-slate-100 pt-3">{footer}</div>}
@@ -650,12 +660,25 @@ function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type
 // ── SMB deep dive ─────────────────────────────────────────────────────────────
 type CellLike = { rooftops: number; franchise: number; independent: number }
 function SMBDeepDive({ cell, smbGt50 }: { cell: CellLike; smbGt50?: { franchise: number; independent: number; rooftops: number } }) {
-  const rows: Array<{ label: string; franchise: number; independent: number; total: number; note?: string }> = [
-    { label: 'All SMB dealers', franchise: cell.franchise, independent: cell.independent, total: cell.rooftops },
-    ...(smbGt50
-      ? [{ label: 'With >50 used cars', franchise: smbGt50.franchise, independent: smbGt50.independent, total: smbGt50.rooftops, note: `${((smbGt50.rooftops / (cell.rooftops || 1)) * 100).toFixed(1)}% of SMB` }]
-      : []),
-  ]
+  const hasGt50 = !!smbGt50
+
+  // Derive ≤50 bucket from totals minus >50.
+  const frGt50 = smbGt50?.franchise ?? 0
+  const indGt50 = smbGt50?.independent ?? 0
+  const frLe50 = cell.franchise - frGt50
+  const indLe50 = cell.independent - indGt50
+
+  const exportRows = hasGt50
+    ? [
+        ['Franchise — >50 used cars', frGt50, ''],
+        ['Franchise — ≤50 used cars', frLe50, ''],
+        ['Franchise — Total', cell.franchise, ''],
+        ['Independent — >50 used cars', '', indGt50],
+        ['Independent — ≤50 used cars', '', indLe50],
+        ['Independent — Total', '', cell.independent],
+        ['Grand Total', cell.franchise, cell.independent],
+      ]
+    : [['All SMB (Franchise)', cell.franchise, ''], ['All SMB (Independent)', '', cell.independent]]
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -663,14 +686,15 @@ function SMBDeepDive({ cell, smbGt50 }: { cell: CellLike; smbGt50?: { franchise:
         <div>
           <h3 className="text-base font-semibold text-slate-950">SMB — Deep Dive</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Single dealers with ≤100 used cars. Each SMB dealer = one rooftop (no group). Franchise/Independent by dealer type.
-            {!smbGt50 && <span className="ml-1 italic text-amber-600">Refresh data to see the &gt;50 used-cars split.</span>}
+            All SMB dealers are <strong>single dealers</strong> (no dealership group name) with ≤100 used cars —
+            each dealer = one rooftop. No groups exist in SMB by definition.
+            {!hasGt50 && <span className="ml-1 italic text-amber-600">Refresh data to populate the &gt;50 / ≤50 used-car split.</span>}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => downloadCsv('smb-deepdive', ['Segment', 'Franchise', 'Independent', 'Total'],
-            rows.map(r => [r.label, r.franchise, r.independent, r.total]))}
+          onClick={() => downloadCsv('smb-deepdive', ['Segment', 'Franchise', 'Independent'],
+            exportRows as Array<Array<string | number>>)}
           aria-label="Download SMB deep dive as CSV"
           title="Download as Excel (CSV)"
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
@@ -682,24 +706,48 @@ function SMBDeepDive({ cell, smbGt50 }: { cell: CellLike; smbGt50?: { franchise:
         <table className="w-full text-sm">
           <thead>
             <tr className="text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-2 text-left">Segment</th>
+              <th className="px-4 py-2 text-left">Used-car band</th>
               <th className="px-4 py-2 text-right">Franchise</th>
               <th className="px-4 py-2 text-right">Independent</th>
               <th className="px-4 py-2 text-right">Total</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.label} className="border-t border-slate-100">
-                <td className="px-4 py-2">
-                  <span className="font-medium text-slate-800">{r.label}</span>
-                  {r.note && <span className="ml-2 text-xs text-slate-400">{r.note}</span>}
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.franchise)}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.independent)}</td>
-                <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(r.total)}</td>
+            {hasGt50 ? (
+              <>
+                <tr className="border-t border-slate-100">
+                  <td className="px-4 py-2 font-medium text-slate-800">&gt;50 used cars</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(frGt50)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(indGt50)}</td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(frGt50 + indGt50)}</td>
+                </tr>
+                <tr className="border-t border-slate-100">
+                  <td className="px-4 py-2 font-medium text-slate-800">≤50 used cars</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(frLe50)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(indLe50)}</td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(frLe50 + indLe50)}</td>
+                </tr>
+                <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
+                  <td className="px-4 py-2">Total SMB</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(cell.franchise)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(cell.independent)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(cell.rooftops)}</td>
+                </tr>
+                <tr className="border-t border-slate-100">
+                  <td className="px-4 py-2 text-xs italic text-slate-400">All are single dealers (no group)</td>
+                  <td colSpan={3} className="px-4 py-2 text-right text-xs text-slate-400">
+                    {((frGt50 + indGt50) / (cell.rooftops || 1) * 100).toFixed(1)}% have &gt;50 cars
+                  </td>
+                </tr>
+              </>
+            ) : (
+              <tr className="border-t border-slate-100">
+                <td className="px-4 py-2 font-medium text-slate-800">All SMB dealers</td>
+                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(cell.franchise)}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(cell.independent)}</td>
+                <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(cell.rooftops)}</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
