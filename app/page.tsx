@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useState, type ReactNode } from 'react'
+import React, { Suspense, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -312,6 +312,7 @@ function MetricCard({
   accounts,
   accountsUnit = 'groups',
   split,
+  footer,
 }: {
   title: string
   metric: CountMetric
@@ -322,6 +323,7 @@ function MetricCard({
   accounts?: number
   accountsUnit?: string
   split?: { rooftops?: number; franchise: number; independent: number }
+  footer?: React.ReactNode
 }) {
   // Group-based segments lead with the account/group count (region-independent),
   // with rooftops shown as the supporting measure.
@@ -410,6 +412,7 @@ function MetricCard({
         )}
       </div>
       {helper && <p className="mt-3 text-xs leading-5 text-slate-500">{helper}</p>}
+      {footer && <div className="mt-4 border-t border-slate-100 pt-3">{footer}</div>}
     </article>
   )
 }
@@ -656,10 +659,13 @@ function DashboardContent() {
               : sg === 'UNSIZED' ? 'UNSIZED' : undefined
 
     const mkMarket = () => ({ franchise: 0, independent: 0 })
-    const podStats: (PodStat & { _companySet: Set<string> })[] = PODS.map(() => ({
+    // mm6to10 tracks per-pod rooftops in the MM-Group 6–10 bucket for the card pod breakdown.
+    type PodStatInternal = PodStat & { _companySet: Set<string>; mm6to10: { franchise: number; independent: number } }
+    const podStats: PodStatInternal[] = PODS.map(() => ({
       companies: 0,
       rooftops: 0,
       markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
+      mm6to10: mkMarket(),
       _companySet: new Set(),
     }))
     for (const r of filteredData.relevantRecords) {
@@ -682,6 +688,11 @@ function DashboardContent() {
         if (mk) {
           if (r.td === 'Franchise') ps.markets[mk].franchise++
           else if (r.td === 'Independent') ps.markets[mk].independent++
+        }
+        // Track MM-Group 6–10 sub-bucket per pod.
+        if (bk === 'MM_6_10') {
+          if (r.td === 'Franchise') ps.mm6to10.franchise++
+          else if (r.td === 'Independent') ps.mm6to10.independent++
         }
       }
     }
@@ -720,7 +731,8 @@ function DashboardContent() {
       row('Unsized — no car data', M.UNSIZED, { showGroups: false }),
       row('Total classified', add(M.SMB, mmSub, entSub), { showGroups: true, kind: 'total' }),
     ]
-    return { M, rows, podStats }
+    const podMm6to10 = podStats.map((ps) => ps.mm6to10)
+    return { M, rows, podStats, podMm6to10 }
   }, [filteredData])
 
   if (error) {
@@ -956,13 +968,15 @@ function DashboardContent() {
             </div>
           ) : (
             <>
+              {/* Row 1 — Mid Market: Total MM + Single + Group ≤5 + Group 6-10 */}
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <MetricCard
-                  title="SMB"
-                  metric={segmentation.bySegment.SMB}
-                  denominator={relevantTotal}
-                  split={seg.M.SMB}
-                  helper="Single dealers with ≤100 used cars."
+                  title="Mid Market — Total"
+                  metric={ZERO_METRIC}
+                  accounts={seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.groups + seg.M.MM_6_10.groups}
+                  accountsUnit=""
+                  split={{ rooftops: seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.rooftops + seg.M.MM_6_10.rooftops, franchise: seg.M.MM_SINGLE.franchise + seg.M.MM_LE5.franchise + seg.M.MM_6_10.franchise, independent: seg.M.MM_SINGLE.independent + seg.M.MM_LE5.independent + seg.M.MM_6_10.independent }}
+                  helper="All Mid Market: singles >100 cars + groups ≤10 rooftops."
                 />
                 <MetricCard
                   title="Mid Market — Single"
@@ -984,6 +998,38 @@ function DashboardContent() {
                   accounts={seg.M.MM_6_10.groups}
                   split={seg.M.MM_6_10}
                   helper="Dealer groups with 6–10 rooftops."
+                  footer={
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pod breakdown</p>
+                      {PODS.map((pod, i) => {
+                        const pf = seg.podMm6to10[i].franchise
+                        const pi = seg.podMm6to10[i].independent
+                        const total = pf + pi
+                        if (total === 0) return null
+                        return (
+                          <div key={pod.lead} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="truncate text-slate-600">{pod.lead}</span>
+                            <span className="shrink-0 tabular-nums text-slate-500">
+                              <span className="text-slate-800 font-medium">{formatNumber(total)}</span>
+                              <span className="ml-1 text-[10px]">({formatNumber(pf)}F/{formatNumber(pi)}I)</span>
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  }
+                />
+              </div>
+
+              {/* Row 2 — Enterprise: Total Enterprise + A + B + C */}
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="Enterprise — Total"
+                  metric={ZERO_METRIC}
+                  accounts={seg.M.ENT_A.groups + seg.M.ENT_B.groups + seg.M.ENT_C.groups}
+                  accountsUnit="groups"
+                  split={{ rooftops: seg.M.ENT_A.rooftops + seg.M.ENT_B.rooftops + seg.M.ENT_C.rooftops, franchise: seg.M.ENT_A.franchise + seg.M.ENT_B.franchise + seg.M.ENT_C.franchise, independent: seg.M.ENT_A.independent + seg.M.ENT_B.independent + seg.M.ENT_C.independent }}
+                  helper="All Enterprise: groups with 11+ rooftops or Top-150 rank."
                 />
                 <MetricCard
                   title="Enterprise-A"
@@ -1006,6 +1052,17 @@ function DashboardContent() {
                   split={seg.M.ENT_C}
                   tone="success"
                   helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
+                />
+              </div>
+
+              {/* Row 3 — SMB + Unsized */}
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="SMB"
+                  metric={segmentation.bySegment.SMB}
+                  denominator={relevantTotal}
+                  split={seg.M.SMB}
+                  helper="Single dealers with ≤100 used cars."
                 />
                 <MetricCard
                   title="Unsized"
