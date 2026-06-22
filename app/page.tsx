@@ -493,6 +493,68 @@ function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
   )
 }
 
+function PodMm6to10Breakdown({
+  podMm6to10,
+  totalRooftops,
+}: {
+  podMm6to10: Array<{ franchise: number; independent: number }>
+  totalRooftops: number
+}) {
+  const [open, setOpen] = useState(false)
+  const podTotals = podMm6to10.map((p) => p.franchise + p.independent)
+  const attributed = podTotals.reduce((s, t) => s + t, 0)
+  const unattributed = totalRooftops - attributed
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600"
+      >
+        <span>Pod breakdown</span>
+        <span className={`transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+      </button>
+
+      {open && (
+        <table className="mt-2 w-full text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+              <th className="pb-1 text-left font-medium">Pod</th>
+              <th className="pb-1 text-right font-medium">Fr</th>
+              <th className="pb-1 text-right font-medium">Ind</th>
+              <th className="pb-1 text-right font-medium">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {PODS.map((pod, i) => {
+              const { franchise: fr, independent: ind } = podMm6to10[i]
+              const total = fr + ind
+              if (total === 0) return null
+              return (
+                <tr key={pod.lead} className="border-t border-slate-100">
+                  <td className="py-0.5 text-slate-600">{pod.lead}</td>
+                  <td className="py-0.5 text-right tabular-nums text-slate-500">{formatNumber(fr)}</td>
+                  <td className="py-0.5 text-right tabular-nums text-slate-500">{formatNumber(ind)}</td>
+                  <td className="py-0.5 text-right font-semibold tabular-nums text-slate-800">{formatNumber(total)}</td>
+                </tr>
+              )
+            })}
+            {unattributed > 0 && (
+              <tr className="border-t border-slate-100">
+                <td className="py-0.5 italic text-slate-400">Unattributed</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-400">—</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-400">—</td>
+                <td className="py-0.5 text-right tabular-nums text-slate-400">{formatNumber(unattributed)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 function InsightList({
   title,
   rows,
@@ -998,26 +1060,7 @@ function DashboardContent() {
                   accounts={seg.M.MM_6_10.groups}
                   split={seg.M.MM_6_10}
                   helper="Dealer groups with 6–10 rooftops."
-                  footer={
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pod breakdown</p>
-                      {PODS.map((pod, i) => {
-                        const pf = seg.podMm6to10[i].franchise
-                        const pi = seg.podMm6to10[i].independent
-                        const total = pf + pi
-                        if (total === 0) return null
-                        return (
-                          <div key={pod.lead} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="truncate text-slate-600">{pod.lead}</span>
-                            <span className="shrink-0 tabular-nums text-slate-500">
-                              <span className="text-slate-800 font-medium">{formatNumber(total)}</span>
-                              <span className="ml-1 text-[10px]">({formatNumber(pf)}F/{formatNumber(pi)}I)</span>
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  }
+                  footer={<PodMm6to10Breakdown podMm6to10={seg.podMm6to10} totalRooftops={seg.M.MM_6_10.rooftops} />}
                 />
               </div>
 
