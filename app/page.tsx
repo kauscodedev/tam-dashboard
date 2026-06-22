@@ -493,17 +493,32 @@ function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
   )
 }
 
-function PodMm6to10Breakdown({
-  podMm6to10,
+function PodBucketBreakdown({
+  podCounts,
   totalRooftops,
+  onRowClick,
 }: {
-  podMm6to10: Array<{ franchise: number; independent: number }>
+  podCounts: Array<{ franchise: number; independent: number }>
   totalRooftops: number
+  onRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const podTotals = podMm6to10.map((p) => p.franchise + p.independent)
-  const attributed = podTotals.reduce((s, t) => s + t, 0)
+  const attributed = podCounts.reduce((s, p) => s + p.franchise + p.independent, 0)
   const unattributed = totalRooftops - attributed
+
+  const cell = (value: number, podIdx: number, type: 'Franchise' | 'Independent' | null) =>
+    onRowClick && value > 0 ? (
+      <button
+        type="button"
+        onClick={() => onRowClick(podIdx, type)}
+        className="rounded px-0.5 tabular-nums text-blue-700 underline-offset-2 hover:bg-blue-50 hover:underline"
+        title="View companies"
+      >
+        {formatNumber(value)}
+      </button>
+    ) : (
+      <span className="tabular-nums">{formatNumber(value)}</span>
+    )
 
   return (
     <div>
@@ -515,7 +530,6 @@ function PodMm6to10Breakdown({
         <span>Pod breakdown</span>
         <span className={`transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
-
       {open && (
         <table className="mt-2 w-full text-xs">
           <thead>
@@ -528,23 +542,22 @@ function PodMm6to10Breakdown({
           </thead>
           <tbody>
             {PODS.map((pod, i) => {
-              const { franchise: fr, independent: ind } = podMm6to10[i]
+              const { franchise: fr, independent: ind } = podCounts[i]
               const total = fr + ind
               if (total === 0) return null
               return (
                 <tr key={pod.lead} className="border-t border-slate-100">
                   <td className="py-0.5 text-slate-600">{pod.lead}</td>
-                  <td className="py-0.5 text-right tabular-nums text-slate-500">{formatNumber(fr)}</td>
-                  <td className="py-0.5 text-right tabular-nums text-slate-500">{formatNumber(ind)}</td>
-                  <td className="py-0.5 text-right font-semibold tabular-nums text-slate-800">{formatNumber(total)}</td>
+                  <td className="py-0.5 text-right">{cell(fr, i, 'Franchise')}</td>
+                  <td className="py-0.5 text-right">{cell(ind, i, 'Independent')}</td>
+                  <td className="py-0.5 text-right font-semibold text-slate-800">{cell(total, i, null)}</td>
                 </tr>
               )
             })}
             {unattributed > 0 && (
               <tr className="border-t border-slate-100">
                 <td className="py-0.5 italic text-slate-400">Unattributed</td>
-                <td className="py-0.5 text-right tabular-nums text-slate-400">—</td>
-                <td className="py-0.5 text-right tabular-nums text-slate-400">—</td>
+                <td colSpan={2} className="py-0.5 text-right tabular-nums text-slate-400">—</td>
                 <td className="py-0.5 text-right tabular-nums text-slate-400">{formatNumber(unattributed)}</td>
               </tr>
             )}
@@ -721,15 +734,18 @@ function DashboardContent() {
               : sg === 'UNSIZED' ? 'UNSIZED' : undefined
 
     const mkMarket = () => ({ franchise: 0, independent: 0 })
-    // mm6to10 tracks per-pod rooftops in the MM-Group 6–10 bucket for the card pod breakdown.
-    type PodStatInternal = PodStat & { _companySet: Set<string>; mm6to10: { franchise: number; independent: number } }
+    type PodStatInternal = PodStat & { _companySet: Set<string> }
     const podStats: PodStatInternal[] = PODS.map(() => ({
-      companies: 0,
-      rooftops: 0,
+      companies: 0, rooftops: 0,
       markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
-      mm6to10: mkMarket(),
       _companySet: new Set(),
     }))
+    // Per-pod breakdown for each bucket (used by the pod-breakdown footer on every card).
+    const BUCKET_KEYS = ['SMB', 'MM_SINGLE', 'MM_LE5', 'MM_6_10', 'ENT_A', 'ENT_B', 'ENT_C'] as const
+    type BucketKey = typeof BUCKET_KEYS[number]
+    const podByBucket: Record<BucketKey, Array<{ franchise: number; independent: number }>> =
+      Object.fromEntries(BUCKET_KEYS.map((k) => [k, PODS.map(() => mkMarket())])) as Record<BucketKey, Array<{ franchise: number; independent: number }>>
+
     for (const r of filteredData.relevantRecords) {
       const bk = bucketOf(r.sg, r.ss)
       if (bk) {
@@ -745,16 +761,16 @@ function DashboardContent() {
         ps.rooftops++
         if (r.gi || r.oi) ps._companySet.add((r.gi || r.oi) as string)
         else ps.companies++
-
         const mk = marketOf(r.sg)
         if (mk) {
           if (r.td === 'Franchise') ps.markets[mk].franchise++
           else if (r.td === 'Independent') ps.markets[mk].independent++
         }
-        // Track MM-Group 6–10 sub-bucket per pod.
-        if (bk === 'MM_6_10') {
-          if (r.td === 'Franchise') ps.mm6to10.franchise++
-          else if (r.td === 'Independent') ps.mm6to10.independent++
+        // Accumulate per-pod per-bucket counts for card pod-breakdown footers.
+        if (bk && bk !== 'UNSIZED') {
+          const pb = podByBucket[bk as BucketKey]
+          if (r.td === 'Franchise') pb[podIdx].franchise++
+          else if (r.td === 'Independent') pb[podIdx].independent++
         }
       }
     }
@@ -793,8 +809,15 @@ function DashboardContent() {
       row('Unsized — no car data', M.UNSIZED, { showGroups: false }),
       row('Total classified', add(M.SMB, mmSub, entSub), { showGroups: true, kind: 'total' }),
     ]
-    const podMm6to10 = podStats.map((ps) => ps.mm6to10)
-    return { M, rows, podStats, podMm6to10 }
+    // Aggregate per-pod for the two "Total" cards.
+    const podByBucketAgg = (keys: BucketKey[]) =>
+      PODS.map((_, i) => ({
+        franchise: keys.reduce((s, k) => s + podByBucket[k][i].franchise, 0),
+        independent: keys.reduce((s, k) => s + podByBucket[k][i].independent, 0),
+      }))
+    const podMM_ALL = podByBucketAgg(['MM_SINGLE', 'MM_LE5', 'MM_6_10'])
+    const podENT_ALL = podByBucketAgg(['ENT_A', 'ENT_B', 'ENT_C'])
+    return { M, rows, podStats, podByBucket, podMM_ALL, podENT_ALL, mmSub, entSub }
   }, [filteredData])
 
   if (error) {
@@ -874,7 +897,6 @@ function DashboardContent() {
     })
   }
   // Pod cell drilldown: companies owned by a pod's members, in a market, by type.
-  // Matches the matrix counts exactly (relevant base, no known-domain filter).
   const openPodDrilldown = (podIndex: number, market: Market | null, type: 'Franchise' | 'Independent' | null) => {
     const pod = PODS[podIndex]
     const records = filteredData.relevantRecords.filter((r) =>
@@ -890,6 +912,38 @@ function DashboardContent() {
       records,
     })
   }
+
+  // Pod bucket drilldown: filter by a specific segment bucket (SMB / MM_SINGLE / etc.) per pod.
+  type BucketPred = (r: MinifiedRecord) => boolean
+  const BUCKET_PRED: Record<string, BucketPred> = {
+    SMB:       (r) => r.sg === 'SMB',
+    MM_SINGLE: (r) => r.sg === 'MM_SINGLE',
+    MM_LE5:    (r) => r.sg === 'MM_GROUP' && r.ss !== '6-10',
+    MM_6_10:   (r) => r.sg === 'MM_GROUP' && r.ss === '6-10',
+    MM_ALL:    (r) => r.sg === 'MM_SINGLE' || r.sg === 'MM_GROUP',
+    ENT_A:     (r) => r.sg === 'ENT_A',
+    ENT_B:     (r) => r.sg === 'ENT_B',
+    ENT_C:     (r) => r.sg === 'ENT_C',
+    ENT_ALL:   (r) => r.sg === 'ENT_A' || r.sg === 'ENT_B' || r.sg === 'ENT_C',
+  }
+  const podBucketDrilldown = (bucketKey: string, title: string) =>
+    (podIdx: number, type: 'Franchise' | 'Independent' | null) => {
+      const bucketPred = BUCKET_PRED[bucketKey]
+      if (!bucketPred) return
+      const pod = PODS[podIdx]
+      const records = filteredData.relevantRecords.filter((r) =>
+        r.ow != null && OWNER_TO_POD[r.ow] === podIdx &&
+        bucketPred(r) &&
+        (type === null || r.td === type)
+      )
+      setDrilldown({
+        reportTitle: `${pod.lead} — ${title}`,
+        segmentLabel: type ?? 'All types',
+        segmentColumn: 'Pod',
+        measure: 'rooftops',
+        records,
+      })
+    }
 
   return (
     <div className="min-h-screen bg-[#eef1f7] text-slate-950">
@@ -1037,8 +1091,9 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.groups + seg.M.MM_6_10.groups}
                   accountsUnit=""
-                  split={{ rooftops: seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.rooftops + seg.M.MM_6_10.rooftops, franchise: seg.M.MM_SINGLE.franchise + seg.M.MM_LE5.franchise + seg.M.MM_6_10.franchise, independent: seg.M.MM_SINGLE.independent + seg.M.MM_LE5.independent + seg.M.MM_6_10.independent }}
+                  split={seg.mmSub}
                   helper="All Mid Market: singles >100 cars + groups ≤10 rooftops."
+                  footer={<PodBucketBreakdown podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} onRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
                 />
                 <MetricCard
                   title="Mid Market — Single"
@@ -1046,6 +1101,7 @@ function DashboardContent() {
                   denominator={relevantTotal}
                   split={seg.M.MM_SINGLE}
                   helper="Standalone dealers with >100 used cars."
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_SINGLE} totalRooftops={seg.M.MM_SINGLE.rooftops} onRowClick={podBucketDrilldown('MM_SINGLE', 'MM — Single')} />}
                 />
                 <MetricCard
                   title="Mid Market — Group ≤5"
@@ -1053,6 +1109,7 @@ function DashboardContent() {
                   accounts={seg.M.MM_LE5.groups}
                   split={seg.M.MM_LE5}
                   helper="Dealer groups with ≤5 rooftops."
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} onRowClick={podBucketDrilldown('MM_LE5', 'MM — Group ≤5')} />}
                 />
                 <MetricCard
                   title="Mid Market — Group 6–10"
@@ -1060,7 +1117,7 @@ function DashboardContent() {
                   accounts={seg.M.MM_6_10.groups}
                   split={seg.M.MM_6_10}
                   helper="Dealer groups with 6–10 rooftops."
-                  footer={<PodMm6to10Breakdown podMm6to10={seg.podMm6to10} totalRooftops={seg.M.MM_6_10.rooftops} />}
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} onRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')} />}
                 />
               </div>
 
@@ -1071,8 +1128,9 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.ENT_A.groups + seg.M.ENT_B.groups + seg.M.ENT_C.groups}
                   accountsUnit="groups"
-                  split={{ rooftops: seg.M.ENT_A.rooftops + seg.M.ENT_B.rooftops + seg.M.ENT_C.rooftops, franchise: seg.M.ENT_A.franchise + seg.M.ENT_B.franchise + seg.M.ENT_C.franchise, independent: seg.M.ENT_A.independent + seg.M.ENT_B.independent + seg.M.ENT_C.independent }}
+                  split={seg.entSub}
                   helper="All Enterprise: groups with 11+ rooftops or Top-150 rank."
+                  footer={<PodBucketBreakdown podCounts={seg.podENT_ALL} totalRooftops={seg.entSub.rooftops} onRowClick={podBucketDrilldown('ENT_ALL', 'Enterprise — Total')} />}
                 />
                 <MetricCard
                   title="Enterprise-A"
@@ -1080,6 +1138,7 @@ function DashboardContent() {
                   accounts={seg.M.ENT_A.groups}
                   split={seg.M.ENT_A}
                   helper="Groups with 11–15 rooftops."
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_A} totalRooftops={seg.M.ENT_A.rooftops} onRowClick={podBucketDrilldown('ENT_A', 'Enterprise-A')} />}
                 />
                 <MetricCard
                   title="Enterprise-B"
@@ -1087,6 +1146,7 @@ function DashboardContent() {
                   accounts={seg.M.ENT_B.groups}
                   split={seg.M.ENT_B}
                   helper="Groups with 16+ rooftops, excluding Top 150."
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_B} totalRooftops={seg.M.ENT_B.rooftops} onRowClick={podBucketDrilldown('ENT_B', 'Enterprise-B')} />}
                 />
                 <MetricCard
                   title="Enterprise-C"
@@ -1095,6 +1155,7 @@ function DashboardContent() {
                   split={seg.M.ENT_C}
                   tone="success"
                   helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_C} totalRooftops={seg.M.ENT_C.rooftops} onRowClick={podBucketDrilldown('ENT_C', 'Enterprise-C')} />}
                 />
               </div>
 
@@ -1106,6 +1167,7 @@ function DashboardContent() {
                   denominator={relevantTotal}
                   split={seg.M.SMB}
                   helper="Single dealers with ≤100 used cars."
+                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.SMB} totalRooftops={seg.M.SMB.rooftops} onRowClick={podBucketDrilldown('SMB', 'SMB')} />}
                 />
                 <MetricCard
                   title="Unsized"
