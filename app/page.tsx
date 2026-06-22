@@ -651,14 +651,16 @@ function DashboardContent() {
     const bucketOf = (sg: string | null, ss: string | null): Bucket | undefined =>
       sg === 'SMB' ? 'SMB'
         : sg === 'MM_SINGLE' ? 'MM_SINGLE'
-          : sg === 'MM_GROUP' ? (ss === '6-10' ? 'MM_6_10' : 'MM_LE5')
+          : sg === 'MM_GROUP' ? ((ss === '6-10' || ss === '7-10') ? 'MM_6_10' : 'MM_LE5')
             : sg === 'ENT_A' ? 'ENT_A' : sg === 'ENT_B' ? 'ENT_B' : sg === 'ENT_C' ? 'ENT_C'
               : sg === 'UNSIZED' ? 'UNSIZED' : undefined
 
     const mkMarket = () => ({ franchise: 0, independent: 0 })
-    const podStats: PodStat[] = PODS.map(() => ({
-      total: 0,
+    const podStats: (PodStat & { _companySet: Set<string> })[] = PODS.map(() => ({
+      companies: 0,
+      rooftops: 0,
       markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
+      _companySet: new Set(),
     }))
     for (const r of filteredData.relevantRecords) {
       const bk = bucketOf(r.sg, r.ss)
@@ -672,13 +674,20 @@ function DashboardContent() {
       const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined
       if (podIdx !== undefined) {
         const ps = podStats[podIdx]
-        ps.total++
+        ps.rooftops++
+        if (r.gi || r.oi) ps._companySet.add((r.gi || r.oi) as string)
+        else ps.companies++
+
         const mk = marketOf(r.sg)
         if (mk) {
           if (r.td === 'Franchise') ps.markets[mk].franchise++
           else if (r.td === 'Independent') ps.markets[mk].independent++
         }
       }
+    }
+    
+    for (const ps of podStats) {
+      ps.companies += ps._companySet.size
     }
     // Group counts are canonical (region-independent) from the dealer-group list.
     for (const g of filteredData.segmentation.groups ?? []) {
@@ -1023,7 +1032,7 @@ function DashboardContent() {
             title="Pod View"
             description="Companies assigned to each sales pod (by company owner), with the Franchise vs Independent split per market segment. Counts cover the filtered Relevant TAM."
           />
-          {seg.podStats.reduce((a, s) => a + s.total, 0) === 0 ? (
+          {seg.podStats.reduce((a, s) => a + s.rooftops, 0) === 0 ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 shadow-sm">
               <p className="font-semibold">Pod data awaits a fresh sync.</p>
               <p className="mt-1 leading-6">
