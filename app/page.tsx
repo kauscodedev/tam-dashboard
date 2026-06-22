@@ -20,6 +20,8 @@ import {
 import { BreakdownTable } from '@/components/BreakdownTableNew'
 import { CrossTabTable } from '@/components/CrossTabTable'
 import { DealerGroupTable } from '@/components/DealerGroupTable'
+import { PodView, type PodStat, type Market } from '@/components/PodView'
+import { PODS, OWNER_TO_POD } from '@/lib/pods'
 import { DrilldownModal } from '@/components/DrilldownModal'
 import { FilterBar } from '@/components/FilterBarNew'
 import { SyncStatusBanner } from '@/components/SyncStatusBanner'
@@ -50,6 +52,7 @@ type DrilldownModalState = {
 const sections = [
   { id: 'overview', label: 'Dashboard', icon: Grid2X2 },
   { id: 'segmentation', label: 'AOP Segments', icon: Boxes },
+  { id: 'pods', label: 'Pod View', icon: Users2 },
   { id: 'market', label: 'Market Segments', icon: Layers3 },
   { id: 'geography', label: 'Geography', icon: Map },
   { id: 'systems', label: 'Systems & Vendors', icon: Database },
@@ -623,11 +626,33 @@ function DashboardContent() {
       MM_SINGLE: { franchise: 0, independent: 0 },
       UNSIZED: { franchise: 0, independent: 0 },
     }
+    const mkMarket = () => ({ franchise: 0, independent: 0 })
+    const podStats: PodStat[] = PODS.map(() => ({
+      total: 0,
+      markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
+    }))
+    const marketOf = (sg: string | null): Market | undefined =>
+      sg === 'SMB' ? 'smb'
+        : sg === 'MM_SINGLE' || sg === 'MM_GROUP' ? 'mm'
+          : sg === 'ENT_A' || sg === 'ENT_B' || sg === 'ENT_C' ? 'ent'
+            : sg === 'UNSIZED' ? 'unsized' : undefined
     for (const r of filteredData.relevantRecords) {
       const b = r.sg ? single[r.sg] : undefined
-      if (!b) continue
-      if (r.td === 'Franchise') b.franchise++
-      else if (r.td === 'Independent') b.independent++
+      if (b) {
+        if (r.td === 'Franchise') b.franchise++
+        else if (r.td === 'Independent') b.independent++
+      }
+      // Pod attribution by owner.
+      const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined
+      if (podIdx !== undefined) {
+        const ps = podStats[podIdx]
+        ps.total++
+        const mk = marketOf(r.sg)
+        if (mk) {
+          if (r.td === 'Franchise') ps.markets[mk].franchise++
+          else if (r.td === 'Independent') ps.markets[mk].independent++
+        }
+      }
     }
     const groups = filteredData.segmentation.groups ?? []
     const gsplit = (pred: (g: DealerGroupRow) => boolean) => {
@@ -659,7 +684,7 @@ function DashboardContent() {
       { label: 'Unsized — no car data', ...single.UNSIZED, kind: 'segment' },
       { label: 'Total classified', ...sum(single.SMB, mmSub, entSub), kind: 'total' },
     ]
-    return { single, mmLe5, mm6to10, entA, entB, entC, rows }
+    return { single, mmLe5, mm6to10, entA, entB, entC, rows, podStats }
   }, [filteredData])
 
   if (error) {
@@ -944,6 +969,26 @@ function DashboardContent() {
                 <DealerGroupTable groups={segmentation.groups ?? []} />
               </div>
             </>
+          )}
+        </section>
+
+        <section>
+          <SectionHeader
+            id="pods"
+            icon={<Users2 className="h-4 w-4" />}
+            title="Pod View"
+            description="Companies assigned to each sales pod (by company owner), with the Franchise vs Independent split per market segment. Counts cover the filtered Relevant TAM."
+          />
+          {seg.podStats.reduce((a, s) => a + s.total, 0) === 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 shadow-sm">
+              <p className="font-semibold">Pod data awaits a fresh sync.</p>
+              <p className="mt-1 leading-6">
+                The loaded data predates the company-owner field used to map accounts to pods. Click
+                <span className="font-medium"> Refresh data</span> (or run the HubSpot sync) to populate it.
+              </p>
+            </div>
+          ) : (
+            <PodView pods={PODS} stats={seg.podStats} />
           )}
         </section>
 

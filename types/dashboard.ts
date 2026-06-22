@@ -19,6 +19,7 @@ export interface MinifiedRecord {
   co: string | null; // country_dropdown
   uc: string | null; // number_of_used_cars (single-dealer sizing)
   gn: string | null; // dealership_group_name (blank = single dealer)
+  ow: string | null; // hubspot_owner_id (for Pod attribution)
   // ── Baked TAM-segmentation tags (computed at sync via tagSegments) ──
   sg: SegmentCode | null; // top-level AOP segment
   gt: GroupType | null;   // group dealership type (GFD/IGD), groups only

@@ -21,6 +21,7 @@ export const FIELD_MAP = {
   country_dropdown: 'co',
   number_of_used_cars: 'uc',
   dealership_group_name: 'gn',
+  hubspot_owner_id: 'ow',
 } as const;
 
 // ── TAM Segmentation framework (RevOps) ──────────────────────────────────────

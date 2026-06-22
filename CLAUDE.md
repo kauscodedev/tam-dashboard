@@ -237,7 +237,18 @@ rendered). These splits are computed in `app/page.tsx` (the `seg` memo) from dat
 blob — no extra synced fields.
 
 **Export:** every metric card, breakdown table, the segmentation matrix, the dealer-group target
-list, and the cross-tab have a CSV download (`lib/exportCsv.ts`) that opens in Excel/Sheets.
+list, the cross-tab, and the Pod View have a CSV download (`lib/exportCsv.ts`) that opens in Excel/Sheets.
+
+## Pod View
+
+The **Pod View** section maps companies to the 5 sales pods by **company owner** (`hubspot_owner_id`,
+synced as `ow`) and shows the Franchise vs Independent split per market (SMB / Mid Market / Enterprise /
+Unsized). Pod rosters + owner IDs are hard-coded in `lib/pods.ts` (`PODS`, `OWNER_TO_POD`); resolved
+against `/crm/v3/owners`. A few HubSpot display names differ from the org chart (Namrata Sharma = "Nam
+Harrison", Vanshit Kothari = "Vans", Anisha = Anisha Jaiswal, Jaiaditya Berry = "Jay Berry"). Pod stats
+are computed in `app/page.tsx` (the `seg` memo) over the relevant base; records owned by non-pod people
+are not attributed. Update `lib/pods.ts` when the roster changes — no re-sync needed for roster edits,
+only the one-time addition of the `ow` field required a sync.
 
 Boundary resolutions (the framework's open items): SMB is ≤100-inclusive; Enterprise-A is
 11–15 and Enterprise-B is 16+; MM sub-sectors apply to both GFD and IGD; 50/50 type ties → IGD.
