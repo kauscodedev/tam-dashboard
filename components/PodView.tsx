@@ -7,7 +7,8 @@ import { downloadCsv } from '@/lib/exportCsv'
 
 export type Market = 'smb' | 'mm' | 'ent' | 'unsized'
 export interface PodStat {
-  total: number
+  companies: number
+  rooftops: number
   markets: Record<Market, { franchise: number; independent: number }>
 }
 
@@ -39,10 +40,10 @@ export function PodView({
 }) {
   const [showMembers, setShowMembers] = useState(false)
   const handleExport = () => {
-    const headers = ['Pod', ...MARKETS.flatMap((m) => [`${m.label} Franchise`, `${m.label} Independent`]), 'Total assigned']
+    const headers = ['Pod', ...MARKETS.flatMap((m) => [`${m.label} Franchise`, `${m.label} Independent`]), 'Total Companies', 'Total Rooftops']
     const rows = pods.map((pod, i) => {
       const s = stats[i]
-      return [pod.lead, ...MARKETS.flatMap((m) => [s.markets[m.key].franchise, s.markets[m.key].independent]), s.total]
+      return [pod.lead, ...MARKETS.flatMap((m) => [s.markets[m.key].franchise, s.markets[m.key].independent]), s.companies, s.rooftops]
     })
     downloadCsv('pod-segment-view', headers, rows)
   }
@@ -75,7 +76,7 @@ export function PodView({
                     <span className="truncate">{m.name}</span>
                     {m.role === 'lead' && (
                       <span className="shrink-0 rounded bg-white/70 px-1.5 text-[10px] font-semibold text-slate-700">
-                        {fmt(stats[i].total)}
+                        {fmt(stats[i].companies)}
                       </span>
                     )}
                   </div>
@@ -97,7 +98,7 @@ export function PodView({
           <div>
             <h3 className="text-base font-semibold text-slate-950">Pod Assignment — Franchise vs Independent by Market</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Companies assigned to each pod (by owner) within the relevant US TAM, split by market segment and dealership type.
+              Rooftops assigned to each pod (by owner) within the relevant US TAM, split by market segment and dealership type.
             </p>
           </div>
           <button
@@ -118,7 +119,8 @@ export function PodView({
                 {MARKETS.map((m) => (
                   <th key={m.key} colSpan={2} className="border-l border-slate-200 px-2 py-2 text-center">{m.label}</th>
                 ))}
-                <th rowSpan={2} className="border-l border-slate-200 px-4 py-2 text-right align-bottom">Total</th>
+                <th rowSpan={2} className="border-l border-slate-200 px-4 py-2 text-right align-bottom">Total<br/>Companies</th>
+                <th rowSpan={2} className="border-l border-slate-200 px-4 py-2 text-right align-bottom">Total<br/>Rooftops</th>
               </tr>
               <tr className="text-[11px] uppercase tracking-wide text-slate-400">
                 {MARKETS.map((m) => (
@@ -157,7 +159,8 @@ export function PodView({
                         {numCell(s.markets[m.key].independent, m.key, 'Independent', 'px-2 py-2 text-right tabular-nums text-slate-700')}
                       </Fragment>
                     ))}
-                    {numCell(s.total, null, null, 'border-l border-slate-100 px-4 py-2 text-right font-semibold tabular-nums text-slate-950')}
+                    {numCell(s.companies, null, null, 'border-l border-slate-100 px-4 py-2 text-right font-semibold tabular-nums text-slate-950')}
+                    {numCell(s.rooftops, null, null, 'border-l border-slate-100 px-4 py-2 text-right font-semibold tabular-nums text-slate-950')}
                   </tr>
                 )
               })}
@@ -169,7 +172,8 @@ export function PodView({
                     <td className="px-2 py-2 text-right tabular-nums">{fmt(stats.reduce((a, s) => a + s.markets[m.key].independent, 0))}</td>
                   </Fragment>
                 ))}
-                <td className="border-l border-slate-200 px-4 py-2 text-right tabular-nums">{fmt(stats.reduce((a, s) => a + s.total, 0))}</td>
+                <td className="border-l border-slate-200 px-4 py-2 text-right tabular-nums">{fmt(stats.reduce((a, s) => a + s.companies, 0))}</td>
+                <td className="border-l border-slate-200 px-4 py-2 text-right tabular-nums">{fmt(stats.reduce((a, s) => a + s.rooftops, 0))}</td>
               </tr>
             </tbody>
           </table>
