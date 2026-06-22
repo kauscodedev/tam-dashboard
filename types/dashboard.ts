@@ -36,7 +36,7 @@ export type SegmentCode =
   | 'ENT_C'      // Top 150 group
   | 'UNSIZED';   // single dealer with no used-car count
 export type GroupType = 'GFD' | 'IGD';
-export type SubSector = '1' | '2-3' | '4-6' | '7-10';
+export type SubSector = '1-5' | '6-10';
 
 /** One dealer-group record from the Dealership Group Names custom object. */
 export interface DealerGroup {

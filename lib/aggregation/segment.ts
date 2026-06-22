@@ -31,10 +31,7 @@ function parseUsedCars(value: string | null): number | null {
 }
 
 function subSectorFor(rooftops: number): SubSector {
-  if (rooftops <= 1) return '1';
-  if (rooftops <= 3) return '2-3';
-  if (rooftops <= 6) return '4-6';
-  return '7-10';
+  return rooftops <= 5 ? '1-5' : '6-10';
 }
 
 /** A group's segment from its canonical rooftop count + Top-150 rank (region-independent). */
@@ -168,12 +165,10 @@ class Counter {
   }
 }
 
-const SUBSECTORS: SubSector[] = ['2-3', '4-6', '7-10', '1'];
+const SUBSECTORS: SubSector[] = ['1-5', '6-10'];
 const SUBSECTOR_LABEL: Record<SubSector, string> = {
-  '1': '1 rooftop',
-  '2-3': '2-3 rooftops',
-  '4-6': '4-6 rooftops',
-  '7-10': '7-10 rooftops',
+  '1-5': '≤5 rooftops',
+  '6-10': '6-10 rooftops',
 };
 
 /**

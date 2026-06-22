@@ -29,7 +29,7 @@ import { useDashboardData } from '@/hooks/useDashboardData'
 import { useFilters } from '@/hooks/useFilters'
 import { useSyncStatus } from '@/hooks/useSyncStatus'
 import { downloadCsv, csvFilename } from '@/lib/exportCsv'
-import type { DealerGroupRow, DrilldownMeasure, GroupRow, MinifiedRecord } from '@/types/dashboard'
+import type { DrilldownMeasure, GroupRow, MinifiedRecord } from '@/types/dashboard'
 
 type CountMetric = { rooftops: number; companies: number }
 // Placeholder metric for group cards that display an account count + Franchise/Independent
@@ -411,8 +411,11 @@ function MetricCard({
 
 type MatrixRow = {
   label: string
+  groups: number
+  rooftops: number
   franchise: number
   independent: number
+  showGroups: boolean
   kind: 'segment' | 'subtotal' | 'total'
   indent?: boolean
 }
@@ -421,17 +424,17 @@ function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
   const handleExport = () => {
     downloadCsv(
       'tam-segmentation-matrix',
-      ['Segment', 'Franchise', 'Independent', 'Total (accounts)'],
-      rows.map((r) => [r.label.trim(), r.franchise, r.independent, r.franchise + r.independent])
+      ['Segment', 'Groups', 'Rooftops', 'Franchise', 'Independent'],
+      rows.map((r) => [r.label.trim(), r.showGroups ? r.groups : '', r.rooftops, r.franchise, r.independent])
     )
   }
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
         <div>
-          <h3 className="text-base font-semibold text-slate-950">TAM Segmentation — Franchise vs Independent</h3>
+          <h3 className="text-base font-semibold text-slate-950">TAM Segmentation — Rooftop Breakdown</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Accounts: each single dealer counts once; each dealer group counts once (group split by majority type, GFD/IGD).
+            Franchise/Independent split is based on rooftop Dealership Type. Group counts are canonical.
           </p>
         </div>
         <button
@@ -449,14 +452,14 @@ function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
           <thead>
             <tr className="text-xs uppercase tracking-wide text-slate-500">
               <th className="px-4 py-2 text-left">Segment</th>
+              <th className="px-4 py-2 text-right">Groups</th>
+              <th className="px-4 py-2 text-right">Total Rooftops</th>
               <th className="px-4 py-2 text-right">Franchise</th>
               <th className="px-4 py-2 text-right">Independent</th>
-              <th className="px-4 py-2 text-right">Total</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, idx) => {
-              const total = r.franchise + r.independent
               const rowClass =
                 r.kind === 'total'
                   ? 'border-t-2 border-slate-200 bg-slate-100 font-semibold text-slate-900'
@@ -466,9 +469,12 @@ function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
               return (
                 <tr key={`${r.label}-${idx}`} className={rowClass}>
                   <td className={`px-4 py-2 ${r.indent ? 'pl-8 text-slate-600' : 'font-medium text-slate-800'}`}>{r.label}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-500">
+                    {r.showGroups && r.groups > 0 ? formatNumber(r.groups) : '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(r.rooftops)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(r.franchise)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(r.independent)}</td>
-                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(total)}</td>
                 </tr>
               )
             })}
@@ -626,25 +632,36 @@ function DashboardContent() {
     }
   }, [filteredData])
 
-  // AOP Franchise/Independent splits. Singles split by record `td` (filter-responsive);
-  // groups split by canonical group type GFD/IGD (region-independent) from the group list.
+  // Per-market figures: groups (canonical), rooftops (records), and the Franchise vs
+  // Independent split WITHIN those rooftops (by each record's dealership type).
   const seg = useMemo(() => {
     if (!filteredData) return null
-    const single: Record<string, { franchise: number; independent: number }> = {
-      SMB: { franchise: 0, independent: 0 },
-      MM_SINGLE: { franchise: 0, independent: 0 },
-      UNSIZED: { franchise: 0, independent: 0 },
+    type Cell = { groups: number; rooftops: number; franchise: number; independent: number }
+    const cell = (): Cell => ({ groups: 0, rooftops: 0, franchise: 0, independent: 0 })
+    const M = {
+      SMB: cell(), MM_SINGLE: cell(), MM_LE5: cell(), MM_6_10: cell(),
+      ENT_A: cell(), ENT_B: cell(), ENT_C: cell(), UNSIZED: cell(),
     }
+    type Bucket = keyof typeof M
+    const bucketOf = (sg: string | null, ss: string | null): Bucket | undefined =>
+      sg === 'SMB' ? 'SMB'
+        : sg === 'MM_SINGLE' ? 'MM_SINGLE'
+          : sg === 'MM_GROUP' ? (ss === '6-10' ? 'MM_6_10' : 'MM_LE5')
+            : sg === 'ENT_A' ? 'ENT_A' : sg === 'ENT_B' ? 'ENT_B' : sg === 'ENT_C' ? 'ENT_C'
+              : sg === 'UNSIZED' ? 'UNSIZED' : undefined
+
     const mkMarket = () => ({ franchise: 0, independent: 0 })
     const podStats: PodStat[] = PODS.map(() => ({
       total: 0,
       markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
     }))
     for (const r of filteredData.relevantRecords) {
-      const b = r.sg ? single[r.sg] : undefined
-      if (b) {
-        if (r.td === 'Franchise') b.franchise++
-        else if (r.td === 'Independent') b.independent++
+      const bk = bucketOf(r.sg, r.ss)
+      if (bk) {
+        const c = M[bk]
+        c.rooftops++
+        if (r.td === 'Franchise') c.franchise++
+        else if (r.td === 'Independent') c.independent++
       }
       // Pod attribution by owner.
       const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined
@@ -658,37 +675,38 @@ function DashboardContent() {
         }
       }
     }
-    const groups = filteredData.segmentation.groups ?? []
-    const gsplit = (pred: (g: DealerGroupRow) => boolean) => {
-      let franchise = 0, independent = 0
-      for (const g of groups) if (pred(g)) (g.type === 'GFD' ? franchise++ : independent++)
-      return { franchise, independent }
+    // Group counts are canonical (region-independent) from the dealer-group list.
+    for (const g of filteredData.segmentation.groups ?? []) {
+      if (g.segment === 'MM_GROUP') (g.rooftops <= 5 ? M.MM_LE5 : M.MM_6_10).groups++
+      else if (g.segment === 'ENT_A') M.ENT_A.groups++
+      else if (g.segment === 'ENT_B') M.ENT_B.groups++
+      else if (g.segment === 'ENT_C') M.ENT_C.groups++
     }
-    const mmLe5 = gsplit((g) => g.segment === 'MM_GROUP' && g.rooftops <= 5)
-    const mm6to10 = gsplit((g) => g.segment === 'MM_GROUP' && g.rooftops > 5)
-    const entA = gsplit((g) => g.segment === 'ENT_A')
-    const entB = gsplit((g) => g.segment === 'ENT_B')
-    const entC = gsplit((g) => g.segment === 'ENT_C')
-    const sum = (...xs: Array<{ franchise: number; independent: number }>) => ({
-      franchise: xs.reduce((s, x) => s + x.franchise, 0),
-      independent: xs.reduce((s, x) => s + x.independent, 0),
+
+    const add = (...cs: Cell[]): Cell => ({
+      groups: cs.reduce((s, c) => s + c.groups, 0),
+      rooftops: cs.reduce((s, c) => s + c.rooftops, 0),
+      franchise: cs.reduce((s, c) => s + c.franchise, 0),
+      independent: cs.reduce((s, c) => s + c.independent, 0),
     })
-    const mmSub = sum(single.MM_SINGLE, mmLe5, mm6to10)
-    const entSub = sum(entA, entB, entC)
+    const mmSub = add(M.MM_SINGLE, M.MM_LE5, M.MM_6_10)
+    const entSub = add(M.ENT_A, M.ENT_B, M.ENT_C)
+    const row = (label: string, c: Cell, opts: { showGroups: boolean; kind?: MatrixRow['kind']; indent?: boolean }): MatrixRow =>
+      ({ label, groups: c.groups, rooftops: c.rooftops, franchise: c.franchise, independent: c.independent, showGroups: opts.showGroups, kind: opts.kind ?? 'segment', indent: opts.indent })
     const rows: MatrixRow[] = [
-      { label: 'SMB — single ≤100 cars', ...single.SMB, kind: 'segment' },
-      { label: 'Mid Market', ...mmSub, kind: 'subtotal' },
-      { label: 'Single (>100 cars)', ...single.MM_SINGLE, kind: 'segment', indent: true },
-      { label: 'Group · ≤5 rooftops', ...mmLe5, kind: 'segment', indent: true },
-      { label: 'Group · 6–10 rooftops', ...mm6to10, kind: 'segment', indent: true },
-      { label: 'Enterprise', ...entSub, kind: 'subtotal' },
-      { label: 'Enterprise-A · 11–15 rooftops', ...entA, kind: 'segment', indent: true },
-      { label: 'Enterprise-B · 16+ rooftops', ...entB, kind: 'segment', indent: true },
-      { label: 'Enterprise-C · Top 150', ...entC, kind: 'segment', indent: true },
-      { label: 'Unsized — no car data', ...single.UNSIZED, kind: 'segment' },
-      { label: 'Total classified', ...sum(single.SMB, mmSub, entSub), kind: 'total' },
+      row('SMB — single ≤100 cars', M.SMB, { showGroups: false }),
+      row('Mid Market', mmSub, { showGroups: true, kind: 'subtotal' }),
+      row('Single (>100 cars)', M.MM_SINGLE, { showGroups: false, indent: true }),
+      row('Group · ≤5 rooftops', M.MM_LE5, { showGroups: true, indent: true }),
+      row('Group · 6–10 rooftops', M.MM_6_10, { showGroups: true, indent: true }),
+      row('Enterprise', entSub, { showGroups: true, kind: 'subtotal' }),
+      row('Enterprise-A · 11–15 rooftops', M.ENT_A, { showGroups: true, indent: true }),
+      row('Enterprise-B · 16+ rooftops', M.ENT_B, { showGroups: true, indent: true }),
+      row('Enterprise-C · Top 150', M.ENT_C, { showGroups: true, indent: true }),
+      row('Unsized — no car data', M.UNSIZED, { showGroups: false }),
+      row('Total classified', add(M.SMB, mmSub, entSub), { showGroups: true, kind: 'total' }),
     ]
-    return { single, mmLe5, mm6to10, entA, entB, entC, rows, podStats }
+    return { M, rows, podStats }
   }, [filteredData])
 
   if (error) {
@@ -929,49 +947,49 @@ function DashboardContent() {
                   title="SMB"
                   metric={segmentation.bySegment.SMB}
                   denominator={relevantTotal}
-                  split={seg.single.SMB}
+                  split={seg.M.SMB}
                   helper="Single dealers with ≤100 used cars."
                 />
                 <MetricCard
                   title="Mid Market — Single"
                   metric={segmentation.bySegment.MM_SINGLE}
                   denominator={relevantTotal}
-                  split={seg.single.MM_SINGLE}
+                  split={seg.M.MM_SINGLE}
                   helper="Standalone dealers with >100 used cars."
                 />
                 <MetricCard
                   title="Mid Market — Group ≤5"
                   metric={ZERO_METRIC}
-                  accounts={seg.mmLe5.franchise + seg.mmLe5.independent}
-                  split={seg.mmLe5}
+                  accounts={seg.M.MM_LE5.groups}
+                  split={seg.M.MM_LE5}
                   helper="Dealer groups with ≤5 rooftops."
                 />
                 <MetricCard
                   title="Mid Market — Group 6–10"
                   metric={ZERO_METRIC}
-                  accounts={seg.mm6to10.franchise + seg.mm6to10.independent}
-                  split={seg.mm6to10}
+                  accounts={seg.M.MM_6_10.groups}
+                  split={seg.M.MM_6_10}
                   helper="Dealer groups with 6–10 rooftops."
                 />
                 <MetricCard
                   title="Enterprise-A"
                   metric={ZERO_METRIC}
-                  accounts={seg.entA.franchise + seg.entA.independent}
-                  split={seg.entA}
+                  accounts={seg.M.ENT_A.groups}
+                  split={seg.M.ENT_A}
                   helper="Groups with 11–15 rooftops."
                 />
                 <MetricCard
                   title="Enterprise-B"
                   metric={ZERO_METRIC}
-                  accounts={seg.entB.franchise + seg.entB.independent}
-                  split={seg.entB}
+                  accounts={seg.M.ENT_B.groups}
+                  split={seg.M.ENT_B}
                   helper="Groups with 16+ rooftops, excluding Top 150."
                 />
                 <MetricCard
                   title="Enterprise-C"
                   metric={ZERO_METRIC}
-                  accounts={seg.entC.franchise + seg.entC.independent}
-                  split={seg.entC}
+                  accounts={seg.M.ENT_C.groups}
+                  split={seg.M.ENT_C}
                   tone="success"
                   helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
                 />
@@ -979,7 +997,7 @@ function DashboardContent() {
                   title="Unsized"
                   metric={segmentation.bySegment.UNSIZED}
                   denominator={relevantTotal}
-                  split={seg.single.UNSIZED}
+                  split={seg.M.UNSIZED}
                   tone="risk"
                   helper="Single dealers missing a used-car count — enrich to classify."
                 />
