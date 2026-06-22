@@ -321,7 +321,7 @@ function MetricCard({
   reportHref?: string
   accounts?: number
   accountsUnit?: string
-  split?: { franchise: number; independent: number }
+  split?: { rooftops?: number; franchise: number; independent: number }
 }) {
   // Group-based segments lead with the account/group count (region-independent),
   // with rooftops shown as the supporting measure.
@@ -386,11 +386,16 @@ function MetricCard({
           </span>
         )}
       </div>
-      <div className="mt-5 flex items-center justify-between gap-3 text-sm">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
         {split ? (
           <>
-            <span className="text-slate-500">{formatNumber(split.franchise)} Franchise</span>
-            <span className="font-medium text-slate-700">{formatNumber(split.independent)} Independent</span>
+            {split.rooftops !== undefined && isAccountsView && (
+              <span className="font-medium text-slate-900">{formatNumber(split.rooftops)} rooftops</span>
+            )}
+            <div className="flex items-center gap-3">
+              <span className="text-slate-500">{formatNumber(split.franchise)} Franchise</span>
+              <span className="font-medium text-slate-700">{formatNumber(split.independent)} Independent</span>
+            </div>
           </>
         ) : isAccountsView ? (
           <>
