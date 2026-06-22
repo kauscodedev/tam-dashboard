@@ -35,6 +35,15 @@ type CountMetric = { rooftops: number; companies: number }
 // Placeholder metric for group cards that display an account count + Franchise/Independent
 // split (so the rooftops/companies fallback line is never shown).
 const ZERO_METRIC: CountMetric = { rooftops: 0, companies: 0 }
+
+// Map a baked segment code to its market bucket (shared by the Pod stats + drilldown).
+function marketOf(sg: string | null): Market | undefined {
+  return sg === 'SMB' ? 'smb'
+    : sg === 'MM_SINGLE' || sg === 'MM_GROUP' ? 'mm'
+      : sg === 'ENT_A' || sg === 'ENT_B' || sg === 'ENT_C' ? 'ent'
+        : sg === 'UNSIZED' ? 'unsized' : undefined
+}
+const MARKET_LABEL: Record<Market, string> = { smb: 'SMB', mm: 'Mid Market', ent: 'Enterprise', unsized: 'Unsized' }
 type DrilldownField = keyof Pick<MinifiedRecord, 'ot' | 'td' | 'cn' | 'cp' | 'st' | 'tm' | 'pn' | 'ls'>
 type BreakdownDrilldownConfig = {
   field: DrilldownField
@@ -631,11 +640,6 @@ function DashboardContent() {
       total: 0,
       markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
     }))
-    const marketOf = (sg: string | null): Market | undefined =>
-      sg === 'SMB' ? 'smb'
-        : sg === 'MM_SINGLE' || sg === 'MM_GROUP' ? 'mm'
-          : sg === 'ENT_A' || sg === 'ENT_B' || sg === 'ENT_C' ? 'ent'
-            : sg === 'UNSIZED' ? 'unsized' : undefined
     for (const r of filteredData.relevantRecords) {
       const b = r.sg ? single[r.sg] : undefined
       if (b) {
@@ -760,6 +764,23 @@ function DashboardContent() {
       segmentLabel: `${state} / ${teamName}`,
       segmentColumn: 'State / Team',
       measure,
+      records,
+    })
+  }
+  // Pod cell drilldown: companies owned by a pod's members, in a market, by type.
+  // Matches the matrix counts exactly (relevant base, no known-domain filter).
+  const openPodDrilldown = (podIndex: number, market: Market | null, type: 'Franchise' | 'Independent' | null) => {
+    const pod = PODS[podIndex]
+    const records = filteredData.relevantRecords.filter((r) =>
+      r.ow != null && OWNER_TO_POD[r.ow] === podIndex &&
+      (market === null || marketOf(r.sg) === market) &&
+      (type === null || r.td === type)
+    )
+    setDrilldown({
+      reportTitle: `${pod.lead} — Pod`,
+      segmentLabel: `${market ? MARKET_LABEL[market] : 'All markets'}${type ? ` · ${type}` : ''}`,
+      segmentColumn: 'Pod / Market',
+      measure: 'rooftops',
       records,
     })
   }
@@ -988,7 +1009,7 @@ function DashboardContent() {
               </p>
             </div>
           ) : (
-            <PodView pods={PODS} stats={seg.podStats} />
+            <PodView pods={PODS} stats={seg.podStats} onCellClick={openPodDrilldown} />
           )}
         </section>
 

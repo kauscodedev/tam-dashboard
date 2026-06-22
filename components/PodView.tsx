@@ -1,7 +1,7 @@
 'use client'
 
-import { Fragment } from 'react'
-import { Download } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { ChevronDown, Download } from 'lucide-react'
 import type { Pod } from '@/lib/pods'
 import { downloadCsv } from '@/lib/exportCsv'
 
@@ -28,7 +28,16 @@ function fmt(n: number) {
   return n.toLocaleString()
 }
 
-export function PodView({ pods, stats }: { pods: Pod[]; stats: PodStat[] }) {
+export function PodView({
+  pods,
+  stats,
+  onCellClick,
+}: {
+  pods: Pod[]
+  stats: PodStat[]
+  onCellClick?: (podIndex: number, market: Market | null, type: 'Franchise' | 'Independent' | null) => void
+}) {
+  const [showMembers, setShowMembers] = useState(false)
   const handleExport = () => {
     const headers = ['Pod', ...MARKETS.flatMap((m) => [`${m.label} Franchise`, `${m.label} Independent`]), 'Total assigned']
     const rows = pods.map((pod, i) => {
@@ -38,13 +47,23 @@ export function PodView({ pods, stats }: { pods: Pod[]; stats: PodStat[] }) {
     downloadCsv('pod-segment-view', headers, rows)
   }
 
-  const maxMembers = Math.max(...pods.map((p) => p.members.length))
+  const maxMembers = showMembers ? Math.max(...pods.map((p) => p.members.length)) : 1
 
   return (
     <div className="space-y-4">
       {/* Roster — mirrors the org chart: lead (yellow), AEs (green), SDRs (blue) */}
       <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="mb-3 text-base font-semibold text-slate-950">Pod Roster</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold text-slate-950">Pod Roster</h3>
+          <button
+            type="button"
+            onClick={() => setShowMembers((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            {showMembers ? 'Collapse' : 'Show members'}
+            <ChevronDown className={`h-3.5 w-3.5 transition ${showMembers ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
         <div className="grid min-w-[820px] gap-2" style={{ gridTemplateColumns: `repeat(${pods.length}, minmax(0,1fr))` }}>
           {pods.map((pod, i) => (
             <div key={pod.lead} className="flex flex-col gap-1">
@@ -67,8 +86,8 @@ export function PodView({ pods, stats }: { pods: Pod[]; stats: PodStat[] }) {
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-yellow-200/80" /> Pod Lead (badge = companies assigned)</span>
-          <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-green-200/70" /> AEs</span>
-          <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-blue-200/60" /> SDRs</span>
+          {showMembers && <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-green-200/70" /> AEs</span>}
+          {showMembers && <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded bg-blue-200/60" /> SDRs</span>}
         </div>
       </section>
 
@@ -113,16 +132,32 @@ export function PodView({ pods, stats }: { pods: Pod[]; stats: PodStat[] }) {
             <tbody>
               {pods.map((pod, i) => {
                 const s = stats[i]
+                const numCell = (value: number, market: Market | null, type: 'Franchise' | 'Independent' | null, cls: string) => (
+                  <td className={cls}>
+                    {onCellClick && value > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => onCellClick(i, market, type)}
+                        className="rounded px-1 py-0.5 font-[inherit] text-blue-700 underline-offset-4 hover:bg-blue-50 hover:underline"
+                        title="View these companies"
+                      >
+                        {fmt(value)}
+                      </button>
+                    ) : (
+                      fmt(value)
+                    )}
+                  </td>
+                )
                 return (
                   <tr key={pod.lead} className="border-t border-slate-100">
                     <td className="px-4 py-2 font-medium text-slate-800">{pod.lead}</td>
                     {MARKETS.map((m) => (
                       <Fragment key={m.key}>
-                        <td className="border-l border-slate-100 px-2 py-2 text-right tabular-nums text-slate-700">{fmt(s.markets[m.key].franchise)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums text-slate-700">{fmt(s.markets[m.key].independent)}</td>
+                        {numCell(s.markets[m.key].franchise, m.key, 'Franchise', 'border-l border-slate-100 px-2 py-2 text-right tabular-nums text-slate-700')}
+                        {numCell(s.markets[m.key].independent, m.key, 'Independent', 'px-2 py-2 text-right tabular-nums text-slate-700')}
                       </Fragment>
                     ))}
-                    <td className="border-l border-slate-100 px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{fmt(s.total)}</td>
+                    {numCell(s.total, null, null, 'border-l border-slate-100 px-4 py-2 text-right font-semibold tabular-nums text-slate-950')}
                   </tr>
                 )
               })}
