@@ -964,7 +964,7 @@ function DashboardContent() {
                 />
               </div>
 
-              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                 <SegmentMatrixTable rows={seg.rows} />
                 <DealerGroupTable groups={segmentation.groups ?? []} />
               </div>

@@ -103,9 +103,9 @@ export function DealerGroupTable({ groups }: { groups: DealerGroupRow[] }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="max-h-[420px] overflow-auto">
         <table className="w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-white">
             <tr className="text-xs uppercase tracking-wide text-slate-500">
               <th className="px-4 py-2 text-left">Group</th>
               <th className="px-4 py-2 text-left">Segment</th>
