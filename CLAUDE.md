@@ -228,7 +228,15 @@ MM-Group metric cards lead with this group count; single-dealer cards stay rooft
 tagging) — `sg`/`gt`/`ss` carry segmentation client-side and the group list lives in
 `segmentation.groups`.
 
-**Export:** every metric card, breakdown table, the account-view table, the dealer-group target
+**Franchise vs Independent split:** every segment card and the **TAM Segmentation Matrix** table
+show a Franchise/Independent split. Singles split by record `td` (filter-responsive); groups split
+by canonical group type GFD↔Franchise / IGD↔Independent (region-independent). The matrix and the
+MM-Group cards bucket groups by **≤5** and **6–10** rooftops (a UI presentation of the framework's
+≤10 Mid Market group band; the underlying `mmSubSectors` 2-3/4-6/7-10 data is retained but not
+rendered). These splits are computed in `app/page.tsx` (the `seg` memo) from data already in the
+blob — no extra synced fields.
+
+**Export:** every metric card, breakdown table, the segmentation matrix, the dealer-group target
 list, and the cross-tab have a CSV download (`lib/exportCsv.ts`) that opens in Excel/Sheets.
 
 Boundary resolutions (the framework's open items): SMB is ≤100-inclusive; Enterprise-A is

@@ -27,9 +27,12 @@ import { useDashboardData } from '@/hooks/useDashboardData'
 import { useFilters } from '@/hooks/useFilters'
 import { useSyncStatus } from '@/hooks/useSyncStatus'
 import { downloadCsv, csvFilename } from '@/lib/exportCsv'
-import type { DrilldownMeasure, GroupRow, MinifiedRecord, SegmentCode, SegmentationData } from '@/types/dashboard'
+import type { DealerGroupRow, DrilldownMeasure, GroupRow, MinifiedRecord } from '@/types/dashboard'
 
 type CountMetric = { rooftops: number; companies: number }
+// Placeholder metric for group cards that display an account count + Franchise/Independent
+// split (so the rooftops/companies fallback line is never shown).
+const ZERO_METRIC: CountMetric = { rooftops: 0, companies: 0 }
 type DrilldownField = keyof Pick<MinifiedRecord, 'ot' | 'td' | 'cn' | 'cp' | 'st' | 'tm' | 'pn' | 'ls'>
 type BreakdownDrilldownConfig = {
   field: DrilldownField
@@ -296,6 +299,7 @@ function MetricCard({
   reportHref,
   accounts,
   accountsUnit = 'groups',
+  split,
 }: {
   title: string
   metric: CountMetric
@@ -305,6 +309,7 @@ function MetricCard({
   reportHref?: string
   accounts?: number
   accountsUnit?: string
+  split?: { franchise: number; independent: number }
 }) {
   // Group-based segments lead with the account/group count (region-independent),
   // with rooftops shown as the supporting measure.
@@ -370,7 +375,12 @@ function MetricCard({
         )}
       </div>
       <div className="mt-5 flex items-center justify-between gap-3 text-sm">
-        {isAccountsView ? (
+        {split ? (
+          <>
+            <span className="text-slate-500">{formatNumber(split.franchise)} Franchise</span>
+            <span className="font-medium text-slate-700">{formatNumber(split.independent)} Independent</span>
+          </>
+        ) : isAccountsView ? (
           <>
             <span className="text-slate-500">{formatNumber(metric.rooftops)} rooftops</span>
             <span className="font-medium text-slate-700">{formatNumber(metric.companies)} companies</span>
@@ -387,50 +397,35 @@ function MetricCard({
   )
 }
 
-const SEGMENT_SUMMARY_ROWS: { code: SegmentCode; label: string }[] = [
-  { code: 'SMB', label: 'SMB — single ≤100 cars' },
-  { code: 'MM_SINGLE', label: 'Mid Market — single >100' },
-  { code: 'MM_GROUP', label: 'Mid Market — group ≤10 rooftops' },
-  { code: 'ENT_A', label: 'Enterprise-A — 11–15 rooftops' },
-  { code: 'ENT_B', label: 'Enterprise-B — 16+ rooftops' },
-  { code: 'ENT_C', label: 'Enterprise-C — Top 150' },
-  { code: 'UNSIZED', label: 'Unsized — no car data' },
-]
+type MatrixRow = {
+  label: string
+  franchise: number
+  independent: number
+  kind: 'segment' | 'subtotal' | 'total'
+  indent?: boolean
+}
 
-function SegmentSummaryTable({
-  segmentation,
-  relevantTotal,
-}: {
-  segmentation: SegmentationData
-  relevantTotal: number
-}) {
-  const accountsMap = segmentation.accounts ?? ({} as SegmentationData['accounts'])
-  const groupList = segmentation.groups ?? []
-  const GROUP_CODES = new Set<SegmentCode>(['MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C'])
-  // Group segments use the canonical group count (region-independent); singles use
-  // the relevant-base account count.
-  const accountFor = (code: SegmentCode) =>
-    GROUP_CODES.has(code) ? groupList.filter((g) => g.segment === code).length : (accountsMap[code] ?? 0)
-  const totalAccounts = SEGMENT_SUMMARY_ROWS.reduce((sum, r) => sum + accountFor(r.code), 0)
+function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
   const handleExport = () => {
-    const rows = SEGMENT_SUMMARY_ROWS.map((r) => {
-      const rooftops = segmentation.bySegment[r.code]?.rooftops ?? 0
-      return [r.label, accountFor(r.code), rooftops, ((rooftops / (relevantTotal || 1)) * 100).toFixed(1)]
-    })
-    rows.push(['Total', totalAccounts, relevantTotal, '100.0'])
-    downloadCsv('tam-by-segment-account-view', ['Segment', 'Accounts', 'Rooftops', 'Share %'], rows)
+    downloadCsv(
+      'tam-segmentation-matrix',
+      ['Segment', 'Franchise', 'Independent', 'Total (accounts)'],
+      rows.map((r) => [r.label.trim(), r.franchise, r.independent, r.franchise + r.independent])
+    )
   }
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
         <div>
-          <h3 className="text-base font-semibold text-slate-950">TAM by Segment — Account View</h3>
-          <p className="mt-1 text-xs text-slate-500">A dealer group counts as one account; single dealers count individually.</p>
+          <h3 className="text-base font-semibold text-slate-950">TAM Segmentation — Franchise vs Independent</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Accounts: each single dealer counts once; each dealer group counts once (group split by majority type, GFD/IGD).
+          </p>
         </div>
         <button
           type="button"
           onClick={handleExport}
-          aria-label="Download account view as CSV"
+          aria-label="Download segmentation matrix as CSV"
           title="Download as Excel (CSV)"
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
         >
@@ -442,30 +437,29 @@ function SegmentSummaryTable({
           <thead>
             <tr className="text-xs uppercase tracking-wide text-slate-500">
               <th className="px-4 py-2 text-left">Segment</th>
-              <th className="px-4 py-2 text-right">Accounts</th>
-              <th className="px-4 py-2 text-right">Rooftops</th>
-              <th className="px-4 py-2 text-right">% Rooftops</th>
+              <th className="px-4 py-2 text-right">Franchise</th>
+              <th className="px-4 py-2 text-right">Independent</th>
+              <th className="px-4 py-2 text-right">Total</th>
             </tr>
           </thead>
           <tbody>
-            {SEGMENT_SUMMARY_ROWS.map((r) => {
-              const accounts = accountFor(r.code)
-              const rooftops = segmentation.bySegment[r.code]?.rooftops ?? 0
+            {rows.map((r, idx) => {
+              const total = r.franchise + r.independent
+              const rowClass =
+                r.kind === 'total'
+                  ? 'border-t-2 border-slate-200 bg-slate-100 font-semibold text-slate-900'
+                  : r.kind === 'subtotal'
+                    ? 'border-t border-slate-200 bg-slate-50 font-semibold text-slate-900'
+                    : 'border-t border-slate-100'
               return (
-                <tr key={r.code} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
-                  <td className="px-4 py-2 text-right font-semibold text-slate-950">{formatNumber(accounts)}</td>
-                  <td className="px-4 py-2 text-right text-slate-700">{formatNumber(rooftops)}</td>
-                  <td className="px-4 py-2 text-right text-slate-500">{formatPercent(rooftops, relevantTotal)}</td>
+                <tr key={`${r.label}-${idx}`} className={rowClass}>
+                  <td className={`px-4 py-2 ${r.indent ? 'pl-8 text-slate-600' : 'font-medium text-slate-800'}`}>{r.label}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(r.franchise)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(r.independent)}</td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(total)}</td>
                 </tr>
               )
             })}
-            <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-              <td className="px-4 py-2 text-slate-900">Total</td>
-              <td className="px-4 py-2 text-right text-slate-900">{formatNumber(totalAccounts)}</td>
-              <td className="px-4 py-2 text-right text-slate-900">{formatNumber(relevantTotal)}</td>
-              <td className="px-4 py-2 text-right text-slate-500">100.0%</td>
-            </tr>
           </tbody>
         </table>
       </div>
@@ -620,6 +614,54 @@ function DashboardContent() {
     }
   }, [filteredData])
 
+  // AOP Franchise/Independent splits. Singles split by record `td` (filter-responsive);
+  // groups split by canonical group type GFD/IGD (region-independent) from the group list.
+  const seg = useMemo(() => {
+    if (!filteredData) return null
+    const single: Record<string, { franchise: number; independent: number }> = {
+      SMB: { franchise: 0, independent: 0 },
+      MM_SINGLE: { franchise: 0, independent: 0 },
+      UNSIZED: { franchise: 0, independent: 0 },
+    }
+    for (const r of filteredData.relevantRecords) {
+      const b = r.sg ? single[r.sg] : undefined
+      if (!b) continue
+      if (r.td === 'Franchise') b.franchise++
+      else if (r.td === 'Independent') b.independent++
+    }
+    const groups = filteredData.segmentation.groups ?? []
+    const gsplit = (pred: (g: DealerGroupRow) => boolean) => {
+      let franchise = 0, independent = 0
+      for (const g of groups) if (pred(g)) (g.type === 'GFD' ? franchise++ : independent++)
+      return { franchise, independent }
+    }
+    const mmLe5 = gsplit((g) => g.segment === 'MM_GROUP' && g.rooftops <= 5)
+    const mm6to10 = gsplit((g) => g.segment === 'MM_GROUP' && g.rooftops > 5)
+    const entA = gsplit((g) => g.segment === 'ENT_A')
+    const entB = gsplit((g) => g.segment === 'ENT_B')
+    const entC = gsplit((g) => g.segment === 'ENT_C')
+    const sum = (...xs: Array<{ franchise: number; independent: number }>) => ({
+      franchise: xs.reduce((s, x) => s + x.franchise, 0),
+      independent: xs.reduce((s, x) => s + x.independent, 0),
+    })
+    const mmSub = sum(single.MM_SINGLE, mmLe5, mm6to10)
+    const entSub = sum(entA, entB, entC)
+    const rows: MatrixRow[] = [
+      { label: 'SMB — single ≤100 cars', ...single.SMB, kind: 'segment' },
+      { label: 'Mid Market', ...mmSub, kind: 'subtotal' },
+      { label: 'Single (>100 cars)', ...single.MM_SINGLE, kind: 'segment', indent: true },
+      { label: 'Group · ≤5 rooftops', ...mmLe5, kind: 'segment', indent: true },
+      { label: 'Group · 6–10 rooftops', ...mm6to10, kind: 'segment', indent: true },
+      { label: 'Enterprise', ...entSub, kind: 'subtotal' },
+      { label: 'Enterprise-A · 11–15 rooftops', ...entA, kind: 'segment', indent: true },
+      { label: 'Enterprise-B · 16+ rooftops', ...entB, kind: 'segment', indent: true },
+      { label: 'Enterprise-C · Top 150', ...entC, kind: 'segment', indent: true },
+      { label: 'Unsized — no car data', ...single.UNSIZED, kind: 'segment' },
+      { label: 'Total classified', ...sum(single.SMB, mmSub, entSub), kind: 'total' },
+    ]
+    return { single, mmLe5, mm6to10, entA, entB, entC, rows }
+  }, [filteredData])
+
   if (error) {
     return (
       <main className="min-h-screen bg-slate-50 p-8">
@@ -636,7 +678,7 @@ function DashboardContent() {
     )
   }
 
-  if (loading || !data || !filteredData || !derived) {
+  if (loading || !data || !filteredData || !derived || !seg) {
     return (
       <main className="min-h-screen bg-slate-50 p-8">
         <div className="mx-auto max-w-[1680px]">
@@ -653,10 +695,6 @@ function DashboardContent() {
 
   const { summaries, breakdowns, stateTeamMatrix, segmentation } = filteredData
   const relevantTotal = summaries.relevantTAM.rooftops
-  // Canonical group/account count per segment (from the group object — region-independent,
-  // so "Top 150" always reads 150 regardless of filters).
-  const groupAccounts = (code: SegmentCode) =>
-    (segmentation.groups ?? []).filter((g) => g.segment === code).length
   const lastSynced = filteredData.fetchedAt
     ? new Date(filteredData.fetchedAt).toLocaleString()
     : 'Unknown'
@@ -698,22 +736,6 @@ function DashboardContent() {
       segmentColumn: 'State / Team',
       measure,
       records,
-    })
-  }
-  // Segmentation drilldowns run over the relevant base (NOT known-domain-only),
-  // matching how the segmentation cards/tables are counted.
-  const openSegmentDrilldown = (
-    reportTitle: string,
-    segmentLabel: string,
-    predicate: (record: MinifiedRecord) => boolean,
-    measure: DrilldownMeasure
-  ) => {
-    setDrilldown({
-      reportTitle,
-      segmentLabel,
-      segmentColumn: 'AOP Segment',
-      measure,
-      records: filteredData.relevantRecords.filter(predicate),
     })
   }
 
@@ -861,107 +883,64 @@ function DashboardContent() {
                   title="SMB"
                   metric={segmentation.bySegment.SMB}
                   denominator={relevantTotal}
+                  split={seg.single.SMB}
                   helper="Single dealers with ≤100 used cars."
                 />
                 <MetricCard
                   title="Mid Market — Single"
                   metric={segmentation.bySegment.MM_SINGLE}
                   denominator={relevantTotal}
+                  split={seg.single.MM_SINGLE}
                   helper="Standalone dealers with >100 used cars."
                 />
                 <MetricCard
-                  title="Mid Market — Group"
-                  metric={segmentation.bySegment.MM_GROUP}
-                  accounts={groupAccounts('MM_GROUP')}
-                  helper="Dealer groups with ≤10 rooftops (GFD + IGD)."
+                  title="Mid Market — Group ≤5"
+                  metric={ZERO_METRIC}
+                  accounts={seg.mmLe5.franchise + seg.mmLe5.independent}
+                  split={seg.mmLe5}
+                  helper="Dealer groups with ≤5 rooftops."
+                />
+                <MetricCard
+                  title="Mid Market — Group 6–10"
+                  metric={ZERO_METRIC}
+                  accounts={seg.mm6to10.franchise + seg.mm6to10.independent}
+                  split={seg.mm6to10}
+                  helper="Dealer groups with 6–10 rooftops."
                 />
                 <MetricCard
                   title="Enterprise-A"
-                  metric={segmentation.bySegment.ENT_A}
-                  accounts={groupAccounts('ENT_A')}
+                  metric={ZERO_METRIC}
+                  accounts={seg.entA.franchise + seg.entA.independent}
+                  split={seg.entA}
                   helper="Groups with 11–15 rooftops."
                 />
                 <MetricCard
                   title="Enterprise-B"
-                  metric={segmentation.bySegment.ENT_B}
-                  accounts={groupAccounts('ENT_B')}
+                  metric={ZERO_METRIC}
+                  accounts={seg.entB.franchise + seg.entB.independent}
+                  split={seg.entB}
                   helper="Groups with 16+ rooftops, excluding Top 150."
                 />
                 <MetricCard
                   title="Enterprise-C"
-                  metric={segmentation.bySegment.ENT_C}
-                  accounts={groupAccounts('ENT_C')}
+                  metric={ZERO_METRIC}
+                  accounts={seg.entC.franchise + seg.entC.independent}
+                  split={seg.entC}
                   tone="success"
                   helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
-                />
-                <MetricCard
-                  title="SMB + MM"
-                  metric={{
-                    rooftops:
-                      segmentation.bySegment.SMB.rooftops +
-                      segmentation.bySegment.MM_SINGLE.rooftops +
-                      segmentation.bySegment.MM_GROUP.rooftops,
-                    companies:
-                      segmentation.bySegment.SMB.companies +
-                      segmentation.bySegment.MM_SINGLE.companies +
-                      segmentation.bySegment.MM_GROUP.companies,
-                  }}
-                  denominator={relevantTotal}
-                  helper="Combined non-enterprise volume segment."
                 />
                 <MetricCard
                   title="Unsized"
                   metric={segmentation.bySegment.UNSIZED}
                   denominator={relevantTotal}
+                  split={seg.single.UNSIZED}
                   tone="risk"
                   helper="Single dealers missing a used-car count — enrich to classify."
                 />
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                <BreakdownTable
-                  title="Enterprise Tiers"
-                  rows={segmentation.enterpriseTiers}
-                  maxRows={3}
-                  onDrilldown={(row, measure) =>
-                    openSegmentDrilldown(
-                      'Enterprise Tiers',
-                      row.label,
-                      (record) => record.sg === row.key,
-                      measure
-                    )
-                  }
-                />
-                <BreakdownTable
-                  title="Mid Market Group — GFD Sub-Sectors"
-                  rows={segmentation.mmSubSectors.GFD}
-                  maxRows={4}
-                  onDrilldown={(row, measure) =>
-                    openSegmentDrilldown(
-                      'Mid Market GFD Sub-Sectors',
-                      row.label,
-                      (record) => record.sg === 'MM_GROUP' && record.gt === 'GFD' && record.ss === row.key,
-                      measure
-                    )
-                  }
-                />
-                <BreakdownTable
-                  title="Mid Market Group — IGD Sub-Sectors"
-                  rows={segmentation.mmSubSectors.IGD}
-                  maxRows={4}
-                  onDrilldown={(row, measure) =>
-                    openSegmentDrilldown(
-                      'Mid Market IGD Sub-Sectors',
-                      row.label,
-                      (record) => record.sg === 'MM_GROUP' && record.gt === 'IGD' && record.ss === row.key,
-                      measure
-                    )
-                  }
-                />
-              </div>
-
-              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-                <SegmentSummaryTable segmentation={segmentation} relevantTotal={relevantTotal} />
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                <SegmentMatrixTable rows={seg.rows} />
                 <DealerGroupTable groups={segmentation.groups ?? []} />
               </div>
             </>
