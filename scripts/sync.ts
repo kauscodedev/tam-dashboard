@@ -94,9 +94,20 @@ async function main(): Promise<void> {
     const dealerGroups = await fetchDealerGroups();
     console.log(`[Sync] Tagging segments using ${dealerGroups.length} dealer groups...`);
     const dealerGroupRows = tagSegments(allRecords, dealerGroups);
-    // `uc` (used cars) and `gn` (group name) are only needed during tagging above.
-    // Drop them from the stored payload — the baked `sg`/`gt`/`ss` tags carry the
-    // segmentation client-side, and the group target list lives in `segmentation.groups`.
+    // Compute SMB >50 used-cars stat BEFORE dropping uc.
+    const smbGt50 = { franchise: 0, independent: 0, rooftops: 0 };
+    for (const r of allRecords) {
+      if (r.sg === 'SMB' && r.uc != null) {
+        const cars = Number(r.uc);
+        if (Number.isFinite(cars) && cars > 50) {
+          smbGt50.rooftops++;
+          if (r.td === 'Franchise') smbGt50.franchise++;
+          else if (r.td === 'Independent') smbGt50.independent++;
+        }
+      }
+    }
+
+    // `uc` and `gn` only needed during tagging — drop from the stored payload.
     for (const r of allRecords) {
       delete (r as Partial<typeof r>).uc;
       delete (r as Partial<typeof r>).gn;
@@ -107,6 +118,7 @@ async function main(): Promise<void> {
     const aggregated = aggregate(allRecords, labels);
     // Attach the canonical group target list (computed once; not record-derived).
     aggregated.segmentation.groups = dealerGroupRows;
+    aggregated.segmentation.smbGt50 = smbGt50;
 
     const { summaries } = aggregated;
     console.log('\n[Sync] ── Aggregation summary ──────────────────────────');

@@ -74,6 +74,8 @@ export interface SegmentationData {
   enterpriseTiers: GroupRow[];
   /** Canonical dealer-group target list (computed at sync; preserved across filters). */
   groups: DealerGroupRow[];
+  /** SMB dealers with >50 used cars. Computed at sync before uc is dropped. Undefined on old blobs. */
+  smbGt50?: { franchise: number; independent: number; rooftops: number };
 }
 
 export interface GroupRow {

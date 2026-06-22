@@ -312,6 +312,7 @@ function MetricCard({
   accounts,
   accountsUnit = 'groups',
   split,
+  groupSplit,
   footer,
 }: {
   title: string
@@ -323,6 +324,7 @@ function MetricCard({
   accounts?: number
   accountsUnit?: string
   split?: { rooftops?: number; franchise: number; independent: number }
+  groupSplit?: { franchise: number; independent: number }
   footer?: React.ReactNode
 }) {
   // Group-based segments lead with the account/group count (region-independent),
@@ -388,27 +390,32 @@ function MetricCard({
           </span>
         )}
       </div>
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="mt-4 space-y-1.5 text-sm">
+        {/* Group-level split (only for group segments where groupSplit is provided) */}
+        {groupSplit && (
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span className="font-medium text-slate-700">Groups</span>
+            <span>{formatNumber(groupSplit.franchise)} GFD · {formatNumber(groupSplit.independent)} IGD</span>
+          </div>
+        )}
+        {/* Rooftop-level split */}
         {split ? (
-          <>
-            {split.rooftops !== undefined && isAccountsView && (
-              <span className="font-medium text-slate-900">{formatNumber(split.rooftops)} rooftops</span>
-            )}
-            <div className="flex items-center gap-3">
-              <span className="text-slate-500">{formatNumber(split.franchise)} Franchise</span>
-              <span className="font-medium text-slate-700">{formatNumber(split.independent)} Independent</span>
-            </div>
-          </>
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-medium text-slate-700">
+              {formatNumber(split.rooftops ?? (isAccountsView ? metric.rooftops : 0))} rooftops
+            </span>
+            <span className="text-slate-500">{formatNumber(split.franchise)} Fr · {formatNumber(split.independent)} Ind</span>
+          </div>
         ) : isAccountsView ? (
-          <>
-            <span className="text-slate-500">{formatNumber(metric.rooftops)} rooftops</span>
-            <span className="font-medium text-slate-700">{formatNumber(metric.companies)} companies</span>
-          </>
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{formatNumber(metric.rooftops)} rooftops</span>
+            <span>{formatNumber(metric.companies)} companies</span>
+          </div>
         ) : (
-          <>
-            <span className="text-slate-500">{formatNumber(metric.companies)} companies</span>
-            <span className="font-medium text-slate-700">{averageRooftops(metric)} rooftops/company</span>
-          </>
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{formatNumber(metric.companies)} companies</span>
+            <span>{averageRooftops(metric)} rooftops/co.</span>
+          </div>
         )}
       </div>
       {helper && <p className="mt-3 text-xs leading-5 text-slate-500">{helper}</p>}
@@ -568,6 +575,138 @@ function PodBucketBreakdown({
   )
 }
 
+// ── MM Rooftop-count table (individual counts 1-10+) ──────────────────────────
+function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type: string; rooftops: number }> }) {
+  const mmGroups = groups.filter((g) => g.segment === 'MM_GROUP')
+  const maxRooftop = Math.max(...mmGroups.map((g) => g.rooftops), 0)
+  const buckets: Array<{ rooftops: number; gfd: number; igd: number }> = []
+  for (let n = 1; n <= Math.min(maxRooftop, 10); n++) {
+    const matches = mmGroups.filter((g) => g.rooftops === n)
+    buckets.push({ rooftops: n, gfd: matches.filter((g) => g.type === 'GFD').length, igd: matches.filter((g) => g.type === 'IGD').length })
+  }
+  const totGfd = buckets.reduce((s, b) => s + b.gfd, 0)
+  const totIgd = buckets.reduce((s, b) => s + b.igd, 0)
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-950">Mid Market — Groups by Rooftop Count</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            How many GFD (Franchise) vs IGD (Independent) groups exist at each rooftop count within the Mid Market band (1–10).
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => downloadCsv('mm-rooftop-count', ['Rooftops', 'GFD (Franchise)', 'IGD (Independent)', 'Total'],
+            [...buckets.map(b => [b.rooftops, b.gfd, b.igd, b.gfd + b.igd]),
+             ['Total', totGfd, totIgd, totGfd + totIgd]])}
+          aria-label="Download MM rooftop table as CSV"
+          title="Download as Excel (CSV)"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          <Download className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-2 text-left">Rooftops</th>
+              <th className="px-4 py-2 text-right">GFD (Franchise)</th>
+              <th className="px-4 py-2 text-right">IGD (Independent)</th>
+              <th className="px-4 py-2 text-right">Total</th>
+              <th className="px-4 py-2 text-right">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {buckets.map((b) => {
+              const total = b.gfd + b.igd
+              const share = totGfd + totIgd > 0 ? (total / (totGfd + totIgd)) * 100 : 0
+              return (
+                <tr key={b.rooftops} className="border-t border-slate-100">
+                  <td className="px-4 py-2 font-medium text-slate-800">{b.rooftops} rooftop{b.rooftops === 1 ? '' : 's'}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.gfd)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.igd)}</td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(total)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-500">{share.toFixed(1)}%</td>
+                </tr>
+              )
+            })}
+            <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
+              <td className="px-4 py-2">Total</td>
+              <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totGfd)}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totIgd)}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totGfd + totIgd)}</td>
+              <td className="px-4 py-2 text-right">100%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+// ── SMB deep dive ─────────────────────────────────────────────────────────────
+type CellLike = { rooftops: number; franchise: number; independent: number }
+function SMBDeepDive({ cell, smbGt50 }: { cell: CellLike; smbGt50?: { franchise: number; independent: number; rooftops: number } }) {
+  const rows: Array<{ label: string; franchise: number; independent: number; total: number; note?: string }> = [
+    { label: 'All SMB dealers', franchise: cell.franchise, independent: cell.independent, total: cell.rooftops },
+    ...(smbGt50
+      ? [{ label: 'With >50 used cars', franchise: smbGt50.franchise, independent: smbGt50.independent, total: smbGt50.rooftops, note: `${((smbGt50.rooftops / (cell.rooftops || 1)) * 100).toFixed(1)}% of SMB` }]
+      : []),
+  ]
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-950">SMB — Deep Dive</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Single dealers with ≤100 used cars. Each SMB dealer = one rooftop (no group). Franchise/Independent by dealer type.
+            {!smbGt50 && <span className="ml-1 italic text-amber-600">Refresh data to see the &gt;50 used-cars split.</span>}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => downloadCsv('smb-deepdive', ['Segment', 'Franchise', 'Independent', 'Total'],
+            rows.map(r => [r.label, r.franchise, r.independent, r.total]))}
+          aria-label="Download SMB deep dive as CSV"
+          title="Download as Excel (CSV)"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          <Download className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-2 text-left">Segment</th>
+              <th className="px-4 py-2 text-right">Franchise</th>
+              <th className="px-4 py-2 text-right">Independent</th>
+              <th className="px-4 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} className="border-t border-slate-100">
+                <td className="px-4 py-2">
+                  <span className="font-medium text-slate-800">{r.label}</span>
+                  {r.note && <span className="ml-2 text-xs text-slate-400">{r.note}</span>}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.franchise)}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.independent)}</td>
+                <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(r.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 function InsightList({
   title,
   rows,
@@ -719,8 +858,8 @@ function DashboardContent() {
   // Independent split WITHIN those rooftops (by each record's dealership type).
   const seg = useMemo(() => {
     if (!filteredData) return null
-    type Cell = { groups: number; rooftops: number; franchise: number; independent: number }
-    const cell = (): Cell => ({ groups: 0, rooftops: 0, franchise: 0, independent: 0 })
+    type Cell = { groups: number; gfdGroups: number; igdGroups: number; rooftops: number; franchise: number; independent: number }
+    const cell = (): Cell => ({ groups: 0, gfdGroups: 0, igdGroups: 0, rooftops: 0, franchise: 0, independent: 0 })
     const M = {
       SMB: cell(), MM_SINGLE: cell(), MM_LE5: cell(), MM_6_10: cell(),
       ENT_A: cell(), ENT_B: cell(), ENT_C: cell(), UNSIZED: cell(),
@@ -778,19 +917,29 @@ function DashboardContent() {
     for (const ps of podStats) {
       ps.companies += ps._companySet.size
     }
-    // Group counts are canonical (region-independent) from the dealer-group list.
+    // Group counts + GFD/IGD split — canonical from dealer-group list.
     for (const g of filteredData.segmentation.groups ?? []) {
-      if (g.segment === 'MM_GROUP') (g.rooftops <= 5 ? M.MM_LE5 : M.MM_6_10).groups++
-      else if (g.segment === 'ENT_A') M.ENT_A.groups++
-      else if (g.segment === 'ENT_B') M.ENT_B.groups++
-      else if (g.segment === 'ENT_C') M.ENT_C.groups++
+      const isFr = g.type === 'GFD'
+      if (g.segment === 'MM_GROUP') {
+        const target = g.rooftops <= 5 ? M.MM_LE5 : M.MM_6_10
+        target.groups++
+        if (isFr) target.gfdGroups++; else target.igdGroups++
+      } else if (g.segment === 'ENT_A') {
+        M.ENT_A.groups++; if (isFr) M.ENT_A.gfdGroups++; else M.ENT_A.igdGroups++
+      } else if (g.segment === 'ENT_B') {
+        M.ENT_B.groups++; if (isFr) M.ENT_B.gfdGroups++; else M.ENT_B.igdGroups++
+      } else if (g.segment === 'ENT_C') {
+        M.ENT_C.groups++; if (isFr) M.ENT_C.gfdGroups++; else M.ENT_C.igdGroups++
+      }
     }
 
     const add = (...cs: Cell[]): Cell => ({
-      groups: cs.reduce((s, c) => s + c.groups, 0),
-      rooftops: cs.reduce((s, c) => s + c.rooftops, 0),
-      franchise: cs.reduce((s, c) => s + c.franchise, 0),
-      independent: cs.reduce((s, c) => s + c.independent, 0),
+      groups:     cs.reduce((s, c) => s + c.groups,     0),
+      gfdGroups:  cs.reduce((s, c) => s + c.gfdGroups,  0),
+      igdGroups:  cs.reduce((s, c) => s + c.igdGroups,  0),
+      rooftops:   cs.reduce((s, c) => s + c.rooftops,   0),
+      franchise:  cs.reduce((s, c) => s + c.franchise,  0),
+      independent:cs.reduce((s, c) => s + c.independent,0),
     })
     const mmSub = add(M.MM_SINGLE, M.MM_LE5, M.MM_6_10)
     const entSub = add(M.ENT_A, M.ENT_B, M.ENT_C)
@@ -1092,6 +1241,7 @@ function DashboardContent() {
                   accounts={seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.groups + seg.M.MM_6_10.groups}
                   accountsUnit=""
                   split={seg.mmSub}
+                  groupSplit={{ franchise: seg.mmSub.gfdGroups, independent: seg.mmSub.igdGroups }}
                   helper="All Mid Market: singles >100 cars + groups ≤10 rooftops."
                   footer={<PodBucketBreakdown podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} onRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
                 />
@@ -1108,6 +1258,7 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.MM_LE5.groups}
                   split={seg.M.MM_LE5}
+                  groupSplit={{ franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups }}
                   helper="Dealer groups with ≤5 rooftops."
                   footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} onRowClick={podBucketDrilldown('MM_LE5', 'MM — Group ≤5')} />}
                 />
@@ -1116,6 +1267,7 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.MM_6_10.groups}
                   split={seg.M.MM_6_10}
+                  groupSplit={{ franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups }}
                   helper="Dealer groups with 6–10 rooftops."
                   footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} onRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')} />}
                 />
@@ -1129,6 +1281,7 @@ function DashboardContent() {
                   accounts={seg.M.ENT_A.groups + seg.M.ENT_B.groups + seg.M.ENT_C.groups}
                   accountsUnit="groups"
                   split={seg.entSub}
+                  groupSplit={{ franchise: seg.entSub.gfdGroups, independent: seg.entSub.igdGroups }}
                   helper="All Enterprise: groups with 11+ rooftops or Top-150 rank."
                   footer={<PodBucketBreakdown podCounts={seg.podENT_ALL} totalRooftops={seg.entSub.rooftops} onRowClick={podBucketDrilldown('ENT_ALL', 'Enterprise — Total')} />}
                 />
@@ -1137,6 +1290,7 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.ENT_A.groups}
                   split={seg.M.ENT_A}
+                  groupSplit={{ franchise: seg.M.ENT_A.gfdGroups, independent: seg.M.ENT_A.igdGroups }}
                   helper="Groups with 11–15 rooftops."
                   footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_A} totalRooftops={seg.M.ENT_A.rooftops} onRowClick={podBucketDrilldown('ENT_A', 'Enterprise-A')} />}
                 />
@@ -1145,6 +1299,7 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.ENT_B.groups}
                   split={seg.M.ENT_B}
+                  groupSplit={{ franchise: seg.M.ENT_B.gfdGroups, independent: seg.M.ENT_B.igdGroups }}
                   helper="Groups with 16+ rooftops, excluding Top 150."
                   footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_B} totalRooftops={seg.M.ENT_B.rooftops} onRowClick={podBucketDrilldown('ENT_B', 'Enterprise-B')} />}
                 />
@@ -1153,6 +1308,7 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.ENT_C.groups}
                   split={seg.M.ENT_C}
+                  groupSplit={{ franchise: seg.M.ENT_C.gfdGroups, independent: seg.M.ENT_C.igdGroups }}
                   tone="success"
                   helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
                   footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_C} totalRooftops={seg.M.ENT_C.rooftops} onRowClick={podBucketDrilldown('ENT_C', 'Enterprise-C')} />}
@@ -1182,6 +1338,12 @@ function DashboardContent() {
               <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                 <SegmentMatrixTable rows={seg.rows} />
                 <DealerGroupTable groups={segmentation.groups ?? []} />
+              </div>
+
+              {/* MM rooftop-count deep-dive table */}
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <MMRooftopCountTable groups={segmentation.groups ?? []} />
+                <SMBDeepDive cell={seg.M.SMB} smbGt50={segmentation.smbGt50} />
               </div>
             </>
           )}
