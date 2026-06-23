@@ -25,8 +25,12 @@ import { fetchDealerGroups } from '../lib/hubspot/fetchDealerGroups';
 import { tagSegments, normalizeGroupName } from '../lib/aggregation/segment';
 import { aggregate } from '../lib/aggregation/aggregate';
 import { PODS, OWNER_TO_POD } from '../lib/pods';
-import type { SyncStatus, AggregatedData } from '../types/dashboard';
-import { PROGRESS_UPDATE_INTERVAL } from '../lib/constants';
+import type { SyncStatus, AggregatedData, MinifiedRecord } from '../types/dashboard';
+import { PROGRESS_UPDATE_INTERVAL, RELEVANT_WEBSITE_STATUS, UNITED_STATES_COUNTRY } from '../lib/constants';
+
+// Same relevant-market filter the dashboard aggregation uses: US + (Relevant or unknown website).
+const isRelevant = (r: MinifiedRecord) =>
+  r.co === UNITED_STATES_COUNTRY && (r.ws === RELEVANT_WEBSITE_STATUS || r.ws == null);
 
 // ─── Blob helpers ─────────────────────────────────────────────────────────────
 
@@ -117,6 +121,7 @@ async function main(): Promise<void> {
     const groupPodTally = new Map<string, number[]>();
 
     for (const r of allRecords) {
+      if (!isRelevant(r)) continue; // match the dashboard's relevant US base
       // SMB used-car band split.
       if (r.sg === 'SMB' && r.uc != null) {
         const cars = Number(r.uc);
