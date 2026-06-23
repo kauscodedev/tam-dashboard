@@ -390,44 +390,46 @@ function MetricCard({
           </span>
         )}
       </div>
-      {/* Inline split table */}
-      <div className="mt-4">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-slate-400">
-              <th className="pb-1 text-left font-medium w-[40%]"></th>
-              <th className="pb-1 text-right font-medium">Fr / GFD</th>
-              <th className="pb-1 text-right font-medium">Ind / IGD</th>
-              <th className="pb-1 text-right font-medium text-slate-600">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groupSplit && (
-              <tr className="border-t border-slate-100">
-                <td className="py-0.5 font-medium text-slate-600">Groups</td>
-                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.franchise)}</td>
-                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.independent)}</td>
-                <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(groupSplit.franchise + groupSplit.independent)}</td>
+      {/* Inline split table — only rendered when there is actual split data */}
+      {(split || groupSplit) ? (
+        <div className="mt-4">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+                <th className="pb-1 text-left font-medium w-[40%]"></th>
+                <th className="pb-1 text-right font-medium">Fr / GFD</th>
+                <th className="pb-1 text-right font-medium">Ind / IGD</th>
+                <th className="pb-1 text-right font-medium text-slate-600">Total</th>
               </tr>
-            )}
-            {split ? (
-              <tr className="border-t border-slate-100">
-                <td className="py-0.5 font-medium text-slate-600">
-                  {formatNumber(split.rooftops ?? (isAccountsView ? metric.rooftops : metric.rooftops))} rooftops
-                </td>
-                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.franchise)}</td>
-                <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.independent)}</td>
-                <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(split.franchise + split.independent)}</td>
-              </tr>
-            ) : !groupSplit && (
-              <tr className="border-t border-slate-100">
-                <td className="py-0.5 text-slate-500">{formatNumber(metric.companies)} companies</td>
-                <td colSpan={3} className="py-0.5 text-right tabular-nums text-slate-500">{averageRooftops(metric)} rt/co.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {groupSplit && (
+                <tr className="border-t border-slate-100">
+                  <td className="py-0.5 font-medium text-slate-600">Groups</td>
+                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.franchise)}</td>
+                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.independent)}</td>
+                  <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(groupSplit.franchise + groupSplit.independent)}</td>
+                </tr>
+              )}
+              {split && (
+                <tr className="border-t border-slate-100">
+                  <td className="py-0.5 font-medium text-slate-600">
+                    {formatNumber(split.rooftops ?? metric.rooftops)} rooftops
+                  </td>
+                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.franchise)}</td>
+                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.independent)}</td>
+                  <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(split.franchise + split.independent)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+          <span>{formatNumber(metric.companies)} companies</span>
+          <span>{averageRooftops(metric)} rt/co.</span>
+        </div>
+      )}
       {helper && <p className="mt-3 text-xs leading-5 text-slate-500">{helper}</p>}
       {footer && <div className="mt-4 border-t border-slate-100 pt-3">{footer}</div>}
     </article>
@@ -510,6 +512,27 @@ function SegmentMatrixTable({ rows }: { rows: MatrixRow[] }) {
   )
 }
 
+type StageMap = Record<string, { franchise: number; independent: number }>
+
+// Shared toggle button for card footers
+function ToggleBtn({ label, open, onClick }: { label: string; open: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
+        open
+          ? 'border-blue-300 bg-blue-50 text-blue-700'
+          : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600'
+      }`}
+    >
+      {label}
+      <span className={`text-[10px] transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+    </button>
+  )
+}
+
+// Pod breakdown panel
 function PodBucketBreakdown({
   podCounts,
   totalRooftops,
@@ -519,83 +542,134 @@ function PodBucketBreakdown({
   totalRooftops: number
   onRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
 }) {
-  const [open, setOpen] = useState(false)
   const attributed = podCounts.reduce((s, p) => s + p.franchise + p.independent, 0)
   const unattributed = totalRooftops - attributed
-
   const cell = (value: number, podIdx: number, type: 'Franchise' | 'Independent' | null) =>
     onRowClick && value > 0 ? (
-      <button
-        type="button"
-        onClick={() => onRowClick(podIdx, type)}
-        className="rounded px-0.5 tabular-nums text-blue-700 underline-offset-2 hover:bg-blue-50 hover:underline"
-        title="View companies"
-      >
+      <button type="button" onClick={() => onRowClick(podIdx, type)}
+        className="rounded px-0.5 tabular-nums text-blue-700 underline-offset-2 hover:bg-blue-50 hover:underline" title="View companies">
         {formatNumber(value)}
       </button>
-    ) : (
-      <span className="tabular-nums">{formatNumber(value)}</span>
-    )
+    ) : <span className="tabular-nums">{formatNumber(value)}</span>
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600"
-      >
-        <span>Pod breakdown</span>
-        <span className={`transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
-      </button>
-      {open && (
-        <table className="mt-2 w-full text-xs">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-slate-400">
-              <th className="pb-1 text-left font-medium">Pod</th>
-              <th className="pb-1 text-right font-medium">Fr</th>
-              <th className="pb-1 text-right font-medium">Ind</th>
-              <th className="pb-1 text-right font-medium">Total</th>
+    <table className="mt-2 w-full text-xs">
+      <thead>
+        <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+          <th className="pb-1 text-left font-medium">Pod</th>
+          <th className="pb-1 text-right font-medium">Fr</th>
+          <th className="pb-1 text-right font-medium">Ind</th>
+          <th className="pb-1 text-right font-medium">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {PODS.map((pod, i) => {
+          const { franchise: fr, independent: ind } = podCounts[i]
+          const total = fr + ind
+          if (total === 0) return null
+          return (
+            <tr key={pod.lead} className="border-t border-slate-100">
+              <td className="py-0.5 text-slate-600">{pod.lead}</td>
+              <td className="py-0.5 text-right">{cell(fr, i, 'Franchise')}</td>
+              <td className="py-0.5 text-right">{cell(ind, i, 'Independent')}</td>
+              <td className="py-0.5 text-right font-semibold text-slate-800">{cell(total, i, null)}</td>
             </tr>
-          </thead>
-          <tbody>
-            {PODS.map((pod, i) => {
-              const { franchise: fr, independent: ind } = podCounts[i]
-              const total = fr + ind
-              if (total === 0) return null
-              return (
-                <tr key={pod.lead} className="border-t border-slate-100">
-                  <td className="py-0.5 text-slate-600">{pod.lead}</td>
-                  <td className="py-0.5 text-right">{cell(fr, i, 'Franchise')}</td>
-                  <td className="py-0.5 text-right">{cell(ind, i, 'Independent')}</td>
-                  <td className="py-0.5 text-right font-semibold text-slate-800">{cell(total, i, null)}</td>
-                </tr>
-              )
-            })}
-            {unattributed > 0 && (
-              <tr className="border-t border-slate-100">
-                <td className="py-0.5 italic text-slate-400">Unattributed</td>
-                <td colSpan={2} className="py-0.5 text-right tabular-nums text-slate-400">—</td>
-                <td className="py-0.5 text-right tabular-nums text-slate-400">{formatNumber(unattributed)}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      )}
+          )
+        })}
+        {unattributed > 0 && (
+          <tr className="border-t border-slate-100">
+            <td className="py-0.5 italic text-slate-400">Unattributed</td>
+            <td colSpan={2} className="py-0.5 text-right tabular-nums text-slate-400">—</td>
+            <td className="py-0.5 text-right tabular-nums text-slate-400">{formatNumber(unattributed)}</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  )
+}
+
+// Stages (GD Level) breakdown panel
+function StageBucketBreakdown({ stageMap }: { stageMap: StageMap }) {
+  const rows = Object.entries(stageMap)
+    .map(([k, v]) => ({ label: k === '(No value)' ? 'No stage' : k, franchise: v.franchise, independent: v.independent }))
+    .sort((a, b) => (b.franchise + b.independent) - (a.franchise + a.independent))
+  return (
+    <table className="mt-2 w-full text-xs">
+      <thead>
+        <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+          <th className="pb-1 text-left font-medium">Stage (GD Level)</th>
+          <th className="pb-1 text-right font-medium">Fr</th>
+          <th className="pb-1 text-right font-medium">Ind</th>
+          <th className="pb-1 text-right font-medium">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label} className="border-t border-slate-100">
+            <td className="py-0.5 text-slate-600">{r.label}</td>
+            <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(r.franchise)}</td>
+            <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(r.independent)}</td>
+            <td className="py-0.5 text-right font-semibold tabular-nums text-slate-800">{formatNumber(r.franchise + r.independent)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+// Combined footer: aligned Pod | Stages toggles on one row
+function CardFooter({
+  podCounts,
+  totalRooftops,
+  stageMap,
+  onPodRowClick,
+}: {
+  podCounts: Array<{ franchise: number; independent: number }>
+  totalRooftops: number
+  stageMap: StageMap
+  onPodRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
+}) {
+  const [panel, setPanel] = useState<'pod' | 'stages' | null>(null)
+  return (
+    <div>
+      <div className="flex gap-2">
+        <ToggleBtn label="Pod breakdown" open={panel === 'pod'} onClick={() => setPanel((p) => p === 'pod' ? null : 'pod')} />
+        <ToggleBtn label="Stages" open={panel === 'stages'} onClick={() => setPanel((p) => p === 'stages' ? null : 'stages')} />
+      </div>
+      {panel === 'pod' && <PodBucketBreakdown podCounts={podCounts} totalRooftops={totalRooftops} onRowClick={onPodRowClick} />}
+      {panel === 'stages' && <StageBucketBreakdown stageMap={stageMap} />}
     </div>
   )
 }
 
-// ── MM Rooftop-count table (individual counts 1-10+) ──────────────────────────
-function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type: string; rooftops: number }> }) {
+// ── MM Rooftop-count table (individual counts 1-10) ──────────────────────────
+type DealerGroupFull = { name: string; segment: string; type: string; rooftops: number; rank: string; members: number }
+
+function MMRooftopCountTable({
+  groups,
+  podByBucket,
+  onPodDrilldown,
+}: {
+  groups: DealerGroupFull[]
+  podByBucket: Record<string, Array<{ franchise: number; independent: number }>>
+  onPodDrilldown: (bucketKey: string, label: string) => (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
+}) {
+  const [openRow, setOpenRow] = useState<number | null>(null)
   const mmGroups = groups.filter((g) => g.segment === 'MM_GROUP')
   const maxRooftop = Math.max(...mmGroups.map((g) => g.rooftops), 0)
-  const buckets: Array<{ rooftops: number; gfd: number; igd: number }> = []
+  const buckets: Array<{ n: number; gfd: number; igd: number; groupNames: DealerGroupFull[] }> = []
   for (let n = 1; n <= Math.min(maxRooftop, 10); n++) {
     const matches = mmGroups.filter((g) => g.rooftops === n)
-    buckets.push({ rooftops: n, gfd: matches.filter((g) => g.type === 'GFD').length, igd: matches.filter((g) => g.type === 'IGD').length })
+    buckets.push({ n, gfd: matches.filter((g) => g.type === 'GFD').length, igd: matches.filter((g) => g.type === 'IGD').length, groupNames: matches })
   }
   const totGfd = buckets.reduce((s, b) => s + b.gfd, 0)
   const totIgd = buckets.reduce((s, b) => s + b.igd, 0)
+
+  // Per-pod counts for each rooftop count using the 1-5 / 6-10 ss buckets.
+  const podCountsForN = (n: number) => {
+    const bk = n <= 5 ? 'MM_LE5' : 'MM_6_10'
+    return podByBucket[bk] ?? []
+  }
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -603,18 +677,13 @@ function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type
         <div>
           <h3 className="text-base font-semibold text-slate-950">Mid Market — Groups by Rooftop Count</h3>
           <p className="mt-1 text-xs text-slate-500">
-            How many GFD (Franchise) vs IGD (Independent) groups exist at each rooftop count within the Mid Market band (1–10).
+            GFD (Franchise) vs IGD (Independent) at each rooftop count. Click a row to see pod breakdown + group names.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => downloadCsv('mm-rooftop-count', ['Rooftops', 'GFD (Franchise)', 'IGD (Independent)', 'Total'],
-            [...buckets.map(b => [b.rooftops, b.gfd, b.igd, b.gfd + b.igd]),
-             ['Total', totGfd, totIgd, totGfd + totIgd]])}
-          aria-label="Download MM rooftop table as CSV"
-          title="Download as Excel (CSV)"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
-        >
+        <button type="button" onClick={() => downloadCsv('mm-rooftop-count', ['Rooftops', 'GFD', 'IGD', 'Total'],
+            [...buckets.map(b => [b.n, b.gfd, b.igd, b.gfd + b.igd]), ['Total', totGfd, totIgd, totGfd + totIgd]])}
+          aria-label="Download MM rooftop table as CSV" title="Download as Excel (CSV)"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700">
           <Download className="h-4 w-4" />
         </button>
       </div>
@@ -623,8 +692,8 @@ function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type
           <thead>
             <tr className="text-xs uppercase tracking-wide text-slate-500">
               <th className="px-4 py-2 text-left">Rooftops</th>
-              <th className="px-4 py-2 text-right">GFD (Franchise)</th>
-              <th className="px-4 py-2 text-right">IGD (Independent)</th>
+              <th className="px-4 py-2 text-right">GFD (Fr)</th>
+              <th className="px-4 py-2 text-right">IGD (Ind)</th>
               <th className="px-4 py-2 text-right">Total</th>
               <th className="px-4 py-2 text-right">Share</th>
             </tr>
@@ -633,14 +702,54 @@ function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type
             {buckets.map((b) => {
               const total = b.gfd + b.igd
               const share = totGfd + totIgd > 0 ? (total / (totGfd + totIgd)) * 100 : 0
+              const isOpen = openRow === b.n
+              const label = `${b.n} rooftop${b.n === 1 ? '' : 's'}`
               return (
-                <tr key={b.rooftops} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">{b.rooftops} rooftop{b.rooftops === 1 ? '' : 's'}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.gfd)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.igd)}</td>
-                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(total)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-slate-500">{share.toFixed(1)}%</td>
-                </tr>
+                <React.Fragment key={b.n}>
+                  <tr
+                    className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                    onClick={() => setOpenRow(isOpen ? null : b.n)}
+                  >
+                    <td className="px-4 py-2 font-medium text-blue-700 hover:underline">
+                      {label} {isOpen ? '▴' : '▾'}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.gfd)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.igd)}</td>
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(total)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-500">{share.toFixed(1)}%</td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="border-t border-blue-100 bg-blue-50/40">
+                      <td colSpan={5} className="px-4 py-3">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {/* Pod breakdown for the ≤5 or 6-10 band this count falls in */}
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Pod breakdown <span className="text-slate-400 font-normal">(rooftop band: {b.n <= 5 ? '≤5' : '6-10'})</span>
+                            </p>
+                            <PodBucketBreakdown
+                              podCounts={podCountsForN(b.n)}
+                              totalRooftops={b.n <= 5 ? (buckets.filter(x => x.n <= 5).reduce((s, x) => s + x.gfd + x.igd, 0)) : (buckets.filter(x => x.n > 5).reduce((s, x) => s + x.gfd + x.igd, 0))}
+                              onRowClick={onPodDrilldown(b.n <= 5 ? 'MM_LE5' : 'MM_6_10', `MM – ${label}`)}
+                            />
+                          </div>
+                          {/* Group names */}
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Groups ({b.groupNames.length})</p>
+                            <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                              {b.groupNames.map((g) => (
+                                <div key={g.name} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="truncate text-slate-700">{g.name}</span>
+                                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${g.type === 'GFD' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{g.type}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               )
             })}
             <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
@@ -659,7 +768,15 @@ function MMRooftopCountTable({ groups }: { groups: Array<{ segment: string; type
 
 // ── SMB deep dive ─────────────────────────────────────────────────────────────
 type CellLike = { rooftops: number; franchise: number; independent: number }
-function SMBDeepDive({ cell, smbGt50 }: { cell: CellLike; smbGt50?: { franchise: number; independent: number; rooftops: number } }) {
+function SMBDeepDive({
+  cell, smbGt50, podCounts, onPodRowClick,
+}: {
+  cell: CellLike
+  smbGt50?: { franchise: number; independent: number; rooftops: number }
+  podCounts: Array<{ franchise: number; independent: number }>
+  onPodRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
+}) {
+  const [podPanel, setPodPanel] = useState<'gt50' | 'le50' | null>(null)
   const hasGt50 = !!smbGt50
 
   // Derive ≤50 bucket from totals minus >50.
@@ -715,18 +832,43 @@ function SMBDeepDive({ cell, smbGt50 }: { cell: CellLike; smbGt50?: { franchise:
           <tbody>
             {hasGt50 ? (
               <>
-                <tr className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">&gt;50 used cars</td>
+                {/* >50 row with pod toggle */}
+                <tr className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                    onClick={() => setPodPanel((p) => p === 'gt50' ? null : 'gt50')}>
+                  <td className="px-4 py-2 font-medium text-blue-700 hover:underline">
+                    &gt;50 used cars {podPanel === 'gt50' ? '▴' : '▾'}
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(frGt50)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(indGt50)}</td>
                   <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(frGt50 + indGt50)}</td>
                 </tr>
-                <tr className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">≤50 used cars</td>
+                {podPanel === 'gt50' && (
+                  <tr className="border-t border-blue-100 bg-blue-50/40">
+                    <td colSpan={4} className="px-4 py-3 text-xs">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pod breakdown — SMB &gt;50 used cars</p>
+                      <PodBucketBreakdown podCounts={podCounts} totalRooftops={frGt50 + indGt50} onRowClick={onPodRowClick} />
+                    </td>
+                  </tr>
+                )}
+                {/* ≤50 row with pod toggle */}
+                <tr className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                    onClick={() => setPodPanel((p) => p === 'le50' ? null : 'le50')}>
+                  <td className="px-4 py-2 font-medium text-blue-700 hover:underline">
+                    ≤50 used cars {podPanel === 'le50' ? '▴' : '▾'}
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(frLe50)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(indLe50)}</td>
                   <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(frLe50 + indLe50)}</td>
                 </tr>
+                {podPanel === 'le50' && (
+                  <tr className="border-t border-blue-100 bg-blue-50/40">
+                    <td colSpan={4} className="px-4 py-3 text-xs">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pod breakdown — SMB ≤50 used cars</p>
+                      <PodBucketBreakdown podCounts={podCounts} totalRooftops={frLe50 + indLe50} onRowClick={onPodRowClick} />
+                      <p className="mt-1 text-[10px] italic text-slate-400">Note: pod counts cover all SMB (uc split not per-pod); expand as a directional view.</p>
+                    </td>
+                  </tr>
+                )}
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
                   <td className="px-4 py-2">Total SMB</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(cell.franchise)}</td>
@@ -927,11 +1069,17 @@ function DashboardContent() {
       markets: { smb: mkMarket(), mm: mkMarket(), ent: mkMarket(), unsized: mkMarket() },
       _companySet: new Set(),
     }))
-    // Per-pod breakdown for each bucket (used by the pod-breakdown footer on every card).
+    // Per-pod breakdown for each bucket.
     const BUCKET_KEYS = ['SMB', 'MM_SINGLE', 'MM_LE5', 'MM_6_10', 'ENT_A', 'ENT_B', 'ENT_C'] as const
     type BucketKey = typeof BUCKET_KEYS[number]
     const podByBucket: Record<BucketKey, Array<{ franchise: number; independent: number }>> =
       Object.fromEntries(BUCKET_KEYS.map((k) => [k, PODS.map(() => mkMarket())])) as Record<BucketKey, Array<{ franchise: number; independent: number }>>
+    // Per-stage (lv = GD Level) breakdown for each bucket — for the Stages toggle.
+    type StageEntry = { franchise: number; independent: number }
+    type StageBucket = Record<string, StageEntry>
+    const stageByBucket: Record<BucketKey, StageBucket> = {
+      SMB: {}, MM_SINGLE: {}, MM_LE5: {}, MM_6_10: {}, ENT_A: {}, ENT_B: {}, ENT_C: {},
+    }
 
     for (const r of filteredData.relevantRecords) {
       const bk = bucketOf(r.sg, r.ss)
@@ -959,6 +1107,14 @@ function DashboardContent() {
           if (r.td === 'Franchise') pb[podIdx].franchise++
           else if (r.td === 'Independent') pb[podIdx].independent++
         }
+      }
+      // Accumulate per-stage per-bucket counts for Stages toggle.
+      if (bk && bk !== 'UNSIZED') {
+        const stageKey = r.lv ?? '(No value)'
+        const sm: Record<string, StageEntry> = stageByBucket[bk as BucketKey]
+        if (!sm[stageKey]) sm[stageKey] = { franchise: 0, independent: 0 }
+        if (r.td === 'Franchise') sm[stageKey].franchise++
+        else if (r.td === 'Independent') sm[stageKey].independent++
       }
     }
     
@@ -1014,7 +1170,22 @@ function DashboardContent() {
       }))
     const podMM_ALL = podByBucketAgg(['MM_SINGLE', 'MM_LE5', 'MM_6_10'])
     const podENT_ALL = podByBucketAgg(['ENT_A', 'ENT_B', 'ENT_C'])
-    return { M, rows, podStats, podByBucket, podMM_ALL, podENT_ALL, mmSub, entSub }
+
+    // Aggregate stage maps for MM_ALL and ENT_ALL.
+    const mergeStages = (keys: BucketKey[]): Record<string, StageEntry> => {
+      const out: Record<string, StageEntry> = {}
+      for (const k of keys) {
+        for (const [stage, cnt] of Object.entries(stageByBucket[k])) {
+          if (!out[stage]) out[stage] = { franchise: 0, independent: 0 }
+          out[stage].franchise += cnt.franchise; out[stage].independent += cnt.independent
+        }
+      }
+      return out
+    }
+    const stageMM_ALL = mergeStages(['MM_SINGLE', 'MM_LE5', 'MM_6_10'])
+    const stageENT_ALL = mergeStages(['ENT_A', 'ENT_B', 'ENT_C'])
+
+    return { M, rows, podStats, podByBucket, podMM_ALL, podENT_ALL, stageByBucket, stageMM_ALL, stageENT_ALL, mmSub, entSub }
   }, [filteredData])
 
   if (error) {
@@ -1291,7 +1462,7 @@ function DashboardContent() {
                   split={seg.mmSub}
                   groupSplit={{ franchise: seg.mmSub.gfdGroups, independent: seg.mmSub.igdGroups }}
                   helper="All Mid Market: singles >100 cars + groups ≤10 rooftops."
-                  footer={<PodBucketBreakdown podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} onRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
+                  footer={<CardFooter podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} stageMap={seg.stageMM_ALL} onPodRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
                 />
                 <MetricCard
                   title="Mid Market — Single"
@@ -1299,7 +1470,7 @@ function DashboardContent() {
                   denominator={relevantTotal}
                   split={seg.M.MM_SINGLE}
                   helper="Standalone dealers with >100 used cars."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_SINGLE} totalRooftops={seg.M.MM_SINGLE.rooftops} onRowClick={podBucketDrilldown('MM_SINGLE', 'MM — Single')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.MM_SINGLE} totalRooftops={seg.M.MM_SINGLE.rooftops} stageMap={seg.stageByBucket.MM_SINGLE} onPodRowClick={podBucketDrilldown('MM_SINGLE', 'MM — Single')} />}
                 />
                 <MetricCard
                   title="Mid Market — Group ≤5"
@@ -1308,7 +1479,7 @@ function DashboardContent() {
                   split={seg.M.MM_LE5}
                   groupSplit={{ franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups }}
                   helper="Dealer groups with ≤5 rooftops."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} onRowClick={podBucketDrilldown('MM_LE5', 'MM — Group ≤5')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} stageMap={seg.stageByBucket.MM_LE5} onPodRowClick={podBucketDrilldown('MM_LE5', 'MM — Group ≤5')} />}
                 />
                 <MetricCard
                   title="Mid Market — Group 6–10"
@@ -1317,7 +1488,7 @@ function DashboardContent() {
                   split={seg.M.MM_6_10}
                   groupSplit={{ franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups }}
                   helper="Dealer groups with 6–10 rooftops."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} onRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} stageMap={seg.stageByBucket.MM_6_10} onPodRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')} />}
                 />
               </div>
 
@@ -1331,7 +1502,7 @@ function DashboardContent() {
                   split={seg.entSub}
                   groupSplit={{ franchise: seg.entSub.gfdGroups, independent: seg.entSub.igdGroups }}
                   helper="All Enterprise: groups with 11+ rooftops or Top-150 rank."
-                  footer={<PodBucketBreakdown podCounts={seg.podENT_ALL} totalRooftops={seg.entSub.rooftops} onRowClick={podBucketDrilldown('ENT_ALL', 'Enterprise — Total')} />}
+                  footer={<CardFooter podCounts={seg.podENT_ALL} totalRooftops={seg.entSub.rooftops} stageMap={seg.stageENT_ALL} onPodRowClick={podBucketDrilldown('ENT_ALL', 'Enterprise — Total')} />}
                 />
                 <MetricCard
                   title="Enterprise-A"
@@ -1340,7 +1511,7 @@ function DashboardContent() {
                   split={seg.M.ENT_A}
                   groupSplit={{ franchise: seg.M.ENT_A.gfdGroups, independent: seg.M.ENT_A.igdGroups }}
                   helper="Groups with 11–15 rooftops."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_A} totalRooftops={seg.M.ENT_A.rooftops} onRowClick={podBucketDrilldown('ENT_A', 'Enterprise-A')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.ENT_A} totalRooftops={seg.M.ENT_A.rooftops} stageMap={seg.stageByBucket.ENT_A} onPodRowClick={podBucketDrilldown('ENT_A', 'Enterprise-A')} />}
                 />
                 <MetricCard
                   title="Enterprise-B"
@@ -1349,7 +1520,7 @@ function DashboardContent() {
                   split={seg.M.ENT_B}
                   groupSplit={{ franchise: seg.M.ENT_B.gfdGroups, independent: seg.M.ENT_B.igdGroups }}
                   helper="Groups with 16+ rooftops, excluding Top 150."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_B} totalRooftops={seg.M.ENT_B.rooftops} onRowClick={podBucketDrilldown('ENT_B', 'Enterprise-B')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.ENT_B} totalRooftops={seg.M.ENT_B.rooftops} stageMap={seg.stageByBucket.ENT_B} onPodRowClick={podBucketDrilldown('ENT_B', 'Enterprise-B')} />}
                 />
                 <MetricCard
                   title="Enterprise-C"
@@ -1359,7 +1530,7 @@ function DashboardContent() {
                   groupSplit={{ franchise: seg.M.ENT_C.gfdGroups, independent: seg.M.ENT_C.igdGroups }}
                   tone="success"
                   helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.ENT_C} totalRooftops={seg.M.ENT_C.rooftops} onRowClick={podBucketDrilldown('ENT_C', 'Enterprise-C')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.ENT_C} totalRooftops={seg.M.ENT_C.rooftops} stageMap={seg.stageByBucket.ENT_C} onPodRowClick={podBucketDrilldown('ENT_C', 'Enterprise-C')} />}
                 />
               </div>
 
@@ -1371,7 +1542,7 @@ function DashboardContent() {
                   denominator={relevantTotal}
                   split={seg.M.SMB}
                   helper="Single dealers with ≤100 used cars."
-                  footer={<PodBucketBreakdown podCounts={seg.podByBucket.SMB} totalRooftops={seg.M.SMB.rooftops} onRowClick={podBucketDrilldown('SMB', 'SMB')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.SMB} totalRooftops={seg.M.SMB.rooftops} stageMap={seg.stageByBucket.SMB} onPodRowClick={podBucketDrilldown('SMB', 'SMB')} />}
                 />
                 <MetricCard
                   title="Unsized"
@@ -1390,8 +1561,17 @@ function DashboardContent() {
 
               {/* MM rooftop-count deep-dive table */}
               <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                <MMRooftopCountTable groups={segmentation.groups ?? []} />
-                <SMBDeepDive cell={seg.M.SMB} smbGt50={segmentation.smbGt50} />
+                <MMRooftopCountTable
+                  groups={(segmentation.groups ?? []) as DealerGroupFull[]}
+                  podByBucket={seg.podByBucket}
+                  onPodDrilldown={(bk, label) => (podIdx, type) => podBucketDrilldown(bk, label)(podIdx, type)}
+                />
+                <SMBDeepDive
+                  cell={seg.M.SMB}
+                  smbGt50={segmentation.smbGt50}
+                  podCounts={seg.podByBucket.SMB}
+                  onPodRowClick={podBucketDrilldown('SMB', 'SMB')}
+                />
               </div>
             </>
           )}
