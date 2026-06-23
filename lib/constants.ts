@@ -29,12 +29,11 @@ export const FIELD_MAP = {
 // rollup and the curated Top-150 rank. It has no gd_id/org_id, so company→group
 // joins are done by normalized `dealship_group_name`.
 export const DEALER_GROUP_OBJECT_TYPE = '2-169112502';
-// Single-dealer used-car threshold: <= SMB, > Mid Market (resolves the framework's
-// open "exactly 100" boundary as SMB-inclusive). Independent/untyped singles use this.
+// Single-dealer used-car threshold for INDEPENDENT/untyped singles: <= SMB, > Mid Market
+// (resolves the framework's open "exactly 100" boundary as SMB-inclusive).
+// NOTE: Franchise singles are always Mid Market regardless of used-car count, so this cap
+// only applies to independent/untyped singles. SMB is therefore independent-only.
 export const SMB_USED_CAR_MAX = 100;
-// Franchise singles graduate to Mid Market at a lower bar: franchise rooftops monetize
-// differently, so a franchise single above 50 used cars is Mid Market, not SMB.
-export const SMB_USED_CAR_MAX_FRANCHISE = 50;
 // Rooftop boundaries for group sizing.
 // A "group" must have at least this many rooftops to be sized as a group. A group whose
 // canonical rooftop count is below this (i.e. 1) is functionally a single dealer and is

@@ -224,13 +224,14 @@ rollup, falling back to member-record count when the rollup is 0/missing. **Exce
   `11–15` → `ENT_A`; `2–10` → `MM_GROUP`. Group type `gt` is the majority of `td` across members
   (50/50 tie → IGD). MM groups get a rooftop sub-sector `ss` — two bands, `2-5` and `6-10` (see
   `SubSector`/`SUBSECTORS`).
-- **Single** (sized by used cars `uc`, **type-dependent** ceiling): missing `uc` → `UNSIZED`;
-  **Franchise** (`td = "Franchise"`) `uc <= 50` → `SMB`, `> 50` → `MM_SINGLE`;
+- **Single** (sized by dealership type + used cars): missing `uc` → `UNSIZED` (incl. unsized
+  franchise); **Franchise** (`td = "Franchise"`) → **always `MM_SINGLE`** regardless of `uc`;
   **Independent / other** `uc <= 100` → `SMB`, `> 100` → `MM_SINGLE`. `gt`/`ss` are null for singles.
 
-The asymmetric SMB ceiling (`SMB_USED_CAR_MAX_FRANCHISE = 50`, `SMB_USED_CAR_MAX = 100`) is
-deliberate: franchise rooftops monetize differently, so a franchise single above 50 used cars is
-Mid Market while an independent single stays SMB up to 100.
+Franchise singles are always Mid Market (never SMB) — franchise rooftops monetize differently — so
+**SMB is independent-only** among singles. `SMB_USED_CAR_MAX = 100` therefore applies only to
+independent/untyped singles; there is no franchise used-car ceiling. `type_of_dealership` is read
+only for the franchise short-circuit; group sizing is rooftop-based and type-agnostic.
 
 Because the tags are baked onto records, `buildSegmentation()` recomputes segment counts on
 every client-side filter with no extra plumbing. The **group target list**
@@ -292,14 +293,21 @@ Update `lib/pods.ts` when the roster changes — no re-sync needed for roster ed
 addition of the `ow` field required a sync (and pod-split pre-computation is keyed off `OWNER_TO_POD`
 order at sync time, so adding/reordering pods does require a re-sync to refresh those fields).
 
-Boundary resolutions (the framework's open items): SMB single ceiling is **type-dependent**
-(Franchise ≤50, Independent ≤100, both inclusive); a group needs **≥2 rooftops** (1-rooftop
-"groups" are singles); Enterprise-A is 11–15 and Enterprise-B is 16+; MM sub-sectors (`2-5`/`6-10`)
-apply to both GFD and IGD; 50/50 type ties → IGD. Segment counts cover the **relevant base** (so they
-sum to Relevant TAM rooftops), not the known-domain base. A global **AOP Segment** filter
-(`FilterState.segment`, key `sg`) was added. Validated against live HubSpot (relevant US base):
-franchise single 51–100 cars = 1,989 (move to MM-Single); franchise single ≤50 = 3,382 and
-independent single ≤100 = 33,823 (stay SMB).
+Boundary resolutions (the framework's open items): **all franchise singles are Mid Market**
+(never SMB); SMB is independent/untyped singles with ≤100 used cars; an unsized franchise single
+stays Unsized; a group needs **≥2 rooftops** (1-rooftop "groups" are singles); Enterprise-A is
+11–15 and Enterprise-B is 16+; MM sub-sectors (`2-5`/`6-10`) apply to both GFD and IGD; 50/50 type
+ties → IGD. Segment counts cover the **relevant base** (so they sum to Relevant TAM rooftops), not
+the known-domain base. A global **AOP Segment** filter (`FilterState.segment`, key `sg`) was added.
+Validated against live HubSpot (relevant US base): **all** franchise singles ≤100 cars = 5,371
+(→ MM-Single), franchise singles with no car count = 683 (→ Unsized), independent singles ≤100 =
+33,823 (→ SMB).
+
+**HubSpot `Market_segment` write-back:** `lib/hubspot/writeMarketSegment.ts` maps each company's
+baked `sg`/`ss` → a `market_segment` enum value and batch-updates HubSpot. Called gated at the end
+of `scripts/sync.ts` — off unless `MARKET_SEGMENT_WRITEBACK=dry-run|write` (scope `relevant`
+default / `all`). Runs after the blob write in its own try/catch so it can't fail the dashboard
+sync. Needs the property created + a write-scoped PAT. Full guide: `docs/market-segment-hubspot-spec.md`.
 
 ## Global Filters
 

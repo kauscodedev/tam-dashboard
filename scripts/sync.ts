@@ -27,6 +27,7 @@ import { aggregate } from '../lib/aggregation/aggregate';
 import { PODS, OWNER_TO_POD } from '../lib/pods';
 import type { SyncStatus, AggregatedData, MinifiedRecord } from '../types/dashboard';
 import { PROGRESS_UPDATE_INTERVAL, RELEVANT_WEBSITE_STATUS, UNITED_STATES_COUNTRY, MID_MARKET_ROOFTOP_MIN } from '../lib/constants';
+import { writeMarketSegments, type WriteMode } from '../lib/hubspot/writeMarketSegment';
 
 // Same relevant-market filter the dashboard aggregation uses: US + (Relevant or unknown website).
 const isRelevant = (r: MinifiedRecord) =>
@@ -229,6 +230,22 @@ async function main(): Promise<void> {
     });
 
     console.log(`[Sync] ✅ Complete at ${completedAt}`);
+
+    // Step 7 (optional, gated): write the computed market_segment back to HubSpot
+    // companies. Off by default so a normal sync never mutates the CRM. Runs after the
+    // dashboard data + success status are written, in its own try/catch, so a write-back
+    // failure cannot mark the dashboard sync as failed.
+    const writebackMode = (process.env.MARKET_SEGMENT_WRITEBACK as WriteMode | undefined) ?? 'off';
+    if (writebackMode !== 'off') {
+      try {
+        const scope = process.env.MARKET_SEGMENT_SCOPE === 'all' ? 'all' : 'relevant';
+        await writeMarketSegments(allRecords, { mode: writebackMode, isRelevant, scope });
+      } catch (wbErr) {
+        const m = wbErr instanceof Error ? wbErr.message : String(wbErr);
+        console.error(`[Sync] market_segment write-back failed (dashboard data already synced OK): ${m}`);
+        process.exit(1);
+      }
+    }
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

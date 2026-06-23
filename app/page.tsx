@@ -835,9 +835,9 @@ function SMBDeepDive({
         <div>
           <h3 className="text-base font-semibold text-slate-950">SMB — Deep Dive</h3>
           <p className="mt-1 text-xs text-slate-500">
-            All SMB dealers are <strong>single-location dealers</strong> (no multi-rooftop group) — each = one rooftop.
-            SMB cap is <strong>Franchise ≤50</strong> / <strong>Independent ≤100</strong> used cars. Franchise dealers above
-            50 used cars are now Mid Market, so the &gt;50 band here is effectively Independent-only.
+            SMB is <strong>single-location independent dealers</strong> (no multi-rooftop group) with ≤100 used cars —
+            each = one rooftop. <strong>All franchise singles are Mid Market</strong> (not SMB), so this segment and the
+            used-car split below are effectively Independent-only.
             {!hasGt50 && <span className="ml-1 italic text-amber-600">Refresh data to populate the &gt;50 / ≤50 used-car split.</span>}
           </p>
         </div>
@@ -1208,9 +1208,9 @@ function DashboardContent() {
     const row = (label: string, c: Cell, opts: { showGroups: boolean; kind?: MatrixRow['kind']; indent?: boolean }): MatrixRow =>
       ({ label, groups: c.groups, rooftops: c.rooftops, franchise: c.franchise, independent: c.independent, showGroups: opts.showGroups, kind: opts.kind ?? 'segment', indent: opts.indent })
     const rows: MatrixRow[] = [
-      row('SMB — single (Fr ≤50, Ind ≤100 cars)', M.SMB, { showGroups: false }),
+      row('SMB — independent single ≤100 cars', M.SMB, { showGroups: false }),
       row('Mid Market', mmSub, { showGroups: true, kind: 'subtotal' }),
-      row('Single · 1 rooftop (Fr >50, Ind >100 cars)', M.MM_SINGLE, { showGroups: false, indent: true }),
+      row('Single · 1 rooftop (all Franchise + Ind >100 cars)', M.MM_SINGLE, { showGroups: false, indent: true }),
       row('Group · 2–5 rooftops', M.MM_LE5, { showGroups: true, indent: true }),
       row('Group · 6–10 rooftops', M.MM_6_10, { showGroups: true, indent: true }),
       row('Enterprise', entSub, { showGroups: true, kind: 'subtotal' }),
@@ -1524,7 +1524,7 @@ function DashboardContent() {
                     { label: 'Groups · 2–5 rooftops', franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups, indent: true },
                     { label: 'Groups · 6–10 rooftops', franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups, indent: true },
                   ]}
-                  helper="Single dealers above the SMB cap (Fr >50, Ind >100 cars) + dealer groups (2–10 rooftops). Groups with 11+ rooftops are Enterprise."
+                  helper="All franchise singles + independent singles >100 cars + dealer groups (2–10 rooftops). Groups with 11+ rooftops are Enterprise."
                   footer={<CardFooter podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} stageMap={seg.stageMM_ALL} onPodRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
                 />
                 <MetricCard
@@ -1532,7 +1532,7 @@ function DashboardContent() {
                   metric={segmentation.bySegment.MM_SINGLE}
                   denominator={relevantTotal}
                   split={seg.M.MM_SINGLE}
-                  helper="Single-location dealers above the SMB cap — Franchise >50 or Independent >100 used cars (1 rooftop)."
+                  helper="Single-location dealers: all franchise, plus independents with >100 used cars (1 rooftop)."
                   footer={<CardFooter podCounts={seg.podByBucket.MM_SINGLE} totalRooftops={seg.M.MM_SINGLE.rooftops} stageMap={seg.stageByBucket.MM_SINGLE} onPodRowClick={podBucketDrilldown('MM_SINGLE', 'MM — Single')} />}
                 />
                 <MetricCard
@@ -1606,7 +1606,7 @@ function DashboardContent() {
                   metric={segmentation.bySegment.SMB}
                   denominator={relevantTotal}
                   split={seg.M.SMB}
-                  helper="Single-location dealers within the SMB cap — Franchise ≤50 or Independent ≤100 used cars."
+                  helper="Single-location independent dealers with ≤100 used cars (all franchise singles are Mid Market)."
                   footer={<CardFooter podCounts={seg.podByBucket.SMB} totalRooftops={seg.M.SMB.rooftops} stageMap={seg.stageByBucket.SMB} onPodRowClick={podBucketDrilldown('SMB', 'SMB')} />}
                 />
                 <MetricCard

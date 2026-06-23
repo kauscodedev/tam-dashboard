@@ -11,18 +11,20 @@ Validated against live HubSpot on 2026-06-24 (relevant US base). See **Validatio
 
 ## 1. The segment values
 
-Property: `market_segment` — single-select **enumeration** on the Company object.
+Property: `market_segment` — single-select **enumeration** on the Company object. Create the
+options with these exact **internal values** (the write-back sends the internal value; the
+label is display-only and can be edited freely):
 
-| Value (enum) | Meaning |
-|---|---|
-| `SMB` | Single dealer within the SMB cap (Franchise ≤50, Independent ≤100 used cars) |
-| `Mid Market - Single` | Single dealer above the SMB cap (Franchise >50, Independent >100 used cars) — 1 rooftop |
-| `Mid Market - Group (2-5)` | Dealer group with 2–5 rooftops |
-| `Mid Market - Group (6-10)` | Dealer group with 6–10 rooftops |
-| `Enterprise A` | Dealer group with 11–15 rooftops |
-| `Enterprise B` | Dealer group with 16+ rooftops (not Top 150) |
-| `Enterprise C` | Top 150 dealer group (`dealership_rank = "Top 150"`) |
-| `Unsized` | Single dealer with no used-car count — enrich to classify |
+| Internal value | Label | Meaning |
+|---|---|---|
+| `smb` | SMB | Independent single dealer with ≤100 used cars |
+| `mm_single` | Mid Market - Single | Single that is Mid Market — **all franchise singles**, plus independent singles with >100 used cars (1 rooftop) |
+| `mm_group_2_5` | Mid Market - Group (2-5) | Dealer group with 2–5 rooftops |
+| `mm_group_6_10` | Mid Market - Group (6-10) | Dealer group with 6–10 rooftops |
+| `enterprise_a` | Enterprise A | Dealer group with 11–15 rooftops |
+| `enterprise_b` | Enterprise B | Dealer group with 16+ rooftops (not Top 150) |
+| `enterprise_c` | Enterprise C | Top 150 dealer group (`dealership_rank = "Top 150"`) |
+| `unsized` | Unsized | Single with no used-car count (incl. unsized franchise) — enrich to classify |
 
 ---
 
@@ -80,23 +82,23 @@ STEP 2 — GROUP, by canonical rooftop count:
   ELSE IF group_rooftop_count >= 6  → Mid Market - Group (6-10)
   ELSE                              → Mid Market - Group (2-5)   # 2–5
 
-STEP 3 — SINGLE, by used cars + dealership type:
-  IF number_of_used_cars is empty   → Unsized
-  ELSE IF type_of_dealership = "Franchise":
-        IF number_of_used_cars <= 50  → SMB
-        ELSE                          → Mid Market - Single
+STEP 3 — SINGLE, by dealership type + used cars:
+  IF number_of_used_cars is empty          → Unsized   # incl. unsized franchise
+  ELSE IF type_of_dealership = "Franchise" → Mid Market - Single   # ALL franchise singles
   ELSE:   # Independent or untyped
-        IF number_of_used_cars <= 100 → SMB
-        ELSE                          → Mid Market - Single
+        IF number_of_used_cars <= 100        → SMB
+        ELSE                                 → Mid Market - Single
 ```
 
-Thresholds (from `lib/constants.ts`): `SMB_USED_CAR_MAX_FRANCHISE = 50`,
-`SMB_USED_CAR_MAX = 100`, `MID_MARKET_ROOFTOP_MIN = 2`, `MID_MARKET_ROOFTOP_MAX = 10`,
-`ENTERPRISE_A_ROOFTOP_MAX = 15`, `TOP_150_RANK = "Top 150"`.
+Thresholds (from `lib/constants.ts`): `SMB_USED_CAR_MAX = 100` (independent/untyped only),
+`MID_MARKET_ROOFTOP_MIN = 2`, `MID_MARKET_ROOFTOP_MAX = 10`, `ENTERPRISE_A_ROOFTOP_MAX = 15`,
+`TOP_150_RANK = "Top 150"`.
 
-**The asymmetric SMB ceiling (Franchise 50 vs Independent 100) is deliberate** — franchise
-rooftops monetize differently. In HubSpot this is the one branch that reads
-`type_of_dealership`; everything else is type-agnostic.
+**Franchise singles are always Mid Market** (never SMB), regardless of used-car count —
+franchise rooftops monetize differently. SMB is therefore independent-only (among singles).
+An unsized franchise single (no used-car count) stays `Unsized`, not Mid Market — it has no
+size signal and is not "SMB". `type_of_dealership` is read only for this franchise
+short-circuit; rooftop-based group sizing is type-agnostic.
 
 ---
 
@@ -112,40 +114,56 @@ present on the company. Practically, a workflow is the cleaner native option.
 
 ---
 
-## 5. Recommended: tag from the dashboard sync (Approach A)
+## 5. Recommended: tag from the dashboard sync (Approach A) — IMPLEMENTED
 
 The sync pipeline (`scripts/sync.ts` → `tagSegments`) already does the group-name join and
 computes the exact segment (`sg` tag, plus `ss` for the MM-group band) for every company,
-using the canonical Dealership Group Names rollup. The most accurate and lowest-risk way to
-populate `market_segment` is to **write the computed value back to HubSpot** rather than
-re-implement the group join in a workflow:
+using the canonical Dealership Group Names rollup. So the write-back lives in the sync rather
+than re-implementing the group join as a workflow. Implemented in
+`lib/hubspot/writeMarketSegment.ts` and called (gated) at the end of `scripts/sync.ts`.
 
-1. Create the `market_segment` enum property (UI or Management API — the MCP integration
-   cannot create properties).
-2. Extend the sync to map each record's `sg`/`ss` → the enum value in §1 and batch-update
-   companies via the HubSpot batch API (`POST /crm/v3/objects/companies/batch/update`,
-   100 records/call, respect rate limits / backoff like `lib/hubspot/client.ts`).
-3. Re-run on the existing sync cadence so the tag stays fresh as used-car counts and group
-   rollups change.
+`sg`/`ss` → `market_segment` internal value (see `marketSegmentValue()`):
 
-`sg`/`ss` → enum mapping:
-
-| `sg` | `ss` | `market_segment` |
+| `sg` | `ss` | `market_segment` value |
 |---|---|---|
-| `SMB` | — | `SMB` |
-| `MM_SINGLE` | — | `Mid Market - Single` |
-| `MM_GROUP` | `2-5` | `Mid Market - Group (2-5)` |
-| `MM_GROUP` | `6-10` | `Mid Market - Group (6-10)` |
-| `ENT_A` | — | `Enterprise A` |
-| `ENT_B` | — | `Enterprise B` |
-| `ENT_C` | — | `Enterprise C` |
-| `UNSIZED` | — | `Unsized` |
+| `SMB` | — | `smb` |
+| `MM_SINGLE` | — | `mm_single` |
+| `MM_GROUP` | `2-5` | `mm_group_2_5` |
+| `MM_GROUP` | `6-10` | `mm_group_6_10` |
+| `ENT_A` | — | `enterprise_a` |
+| `ENT_B` | — | `enterprise_b` |
+| `ENT_C` | — | `enterprise_c` |
+| `UNSIZED` | — | `unsized` |
 
-> Note: `sg`/`ss` are currently baked only onto the in-memory records during sync and are
-> **not** persisted with the HubSpot company id available for write-back at that point — the
-> write-back step needs the company object id (`hi`) alongside the computed tag. That id is
-> available on each `MinifiedRecord` (`hi`), so the write-back can run in the same pass that
-> computes the tags, before they are minified into the blob.
+### One-time setup
+1. **Create the property.** `market_segment` single-select enum on Company, with the option
+   internal values from §1. (The MCP integration cannot create properties — use the HubSpot
+   UI: Settings → Properties → Create property → Company → Dropdown select; or the Management
+   API `POST /crm/v3/properties/companies` with those `options`.)
+2. **Scope the PAT.** `HUBSPOT_PAT` needs `crm.objects.companies.write` (read-only PATs fail
+   the batch update with 403).
+
+### Running it
+The write-back is **off by default** — a normal sync never mutates the CRM. Control it with env:
+
+| Env var | Values | Default |
+|---|---|---|
+| `MARKET_SEGMENT_WRITEBACK` | `off` \| `dry-run` \| `write` | `off` |
+| `MARKET_SEGMENT_SCOPE` | `relevant` \| `all` | `relevant` |
+
+```bash
+# 1) Dry run first — logs the segment distribution, writes nothing:
+MARKET_SEGMENT_WRITEBACK=dry-run npm run sync
+# 2) Verify the printed counts match expectations, then write for real:
+MARKET_SEGMENT_WRITEBACK=write npm run sync
+```
+
+`relevant` (default) tags only the relevant US base (the dashboard universe and the validated
+numbers below); `all` tags every fetched company. Write-back runs **after** the dashboard blob
++ success status are written and is wrapped in its own try/catch, so a tagging failure cannot
+mark the dashboard sync as failed. Batches of 100 via
+`POST /crm/v3/objects/companies/batch/update`, reusing `lib/hubspot/client.ts` (429 backoff).
+Re-running re-tags from fresh data, so the property stays current with used-car / rollup changes.
 
 ---
 
@@ -156,13 +174,17 @@ AND (`website_status = Relevant` OR empty). All reproduced via independent HubSp
 
 | Slice | Count | Resulting segment |
 |---|---|---|
-| Franchise single, 51–100 used cars | **1,989** | `Mid Market - Single` (moved out of SMB) |
-| Franchise single, ≤50 used cars | **3,382** | `SMB` |
-| Independent single, ≤100 used cars | **33,823** | `SMB` |
+| Franchise single, ≤100 used cars (**all** franchise SMB) | **5,371** | `mm_single` (all move to Mid Market) |
+| ↳ of which 51–100 used cars | 1,989 | `mm_single` |
+| ↳ of which ≤50 used cars | 3,382 | `mm_single` |
+| Franchise single, no used-car count | **683** | `unsized` (stays — no size signal) |
+| Independent single, ≤100 used cars | **33,823** | `smb` |
 
-After the re-tag: **SMB = 3,382 + 33,823 = 37,205** (single dealers; down exactly 1,989 from
-the prior 39,194). The 1,989 franchise singles move to `Mid Market - Single`. 1-rooftop
-"groups" (≈140 in the current data) are re-tagged as singles and sized by §3.
+After the re-tag: among singles, **SMB is independent-only**. All 5,371 sized franchise singles
+become `mm_single` (plus franchise singles with >100 used cars, already Mid Market); the 683
+unsized franchise singles stay `unsized`. 1-rooftop "groups" (≈140 in the current data) are
+re-tagged as singles and sized by §3.
 
-The exact 1-rooftop-group count and the full per-segment totals are printed by the sync run's
-summary (`scripts/sync.ts`), which is the end-to-end source of truth after a re-sync.
+The full per-segment totals are printed by the sync summary (`scripts/sync.ts`) and the
+write-back's own distribution log (run with `MARKET_SEGMENT_WRITEBACK=dry-run`), which are the
+end-to-end source of truth after a re-sync.

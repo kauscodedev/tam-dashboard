@@ -11,7 +11,6 @@ import type {
 } from '../../types/dashboard';
 import {
   SMB_USED_CAR_MAX,
-  SMB_USED_CAR_MAX_FRANCHISE,
   MID_MARKET_ROOFTOP_MIN,
   MID_MARKET_ROOFTOP_MAX,
   ENTERPRISE_A_ROOFTOP_MAX,
@@ -36,11 +35,6 @@ function subSectorFor(rooftops: number): SubSector {
   return rooftops <= 5 ? '2-5' : '6-10';
 }
 
-/** Used-car ceiling at/under which a single dealer is SMB (type-dependent). */
-function smbCeilingFor(type: string | null): number {
-  return type === 'Franchise' ? SMB_USED_CAR_MAX_FRANCHISE : SMB_USED_CAR_MAX;
-}
-
 /** A group's segment from its canonical rooftop count + Top-150 rank (region-independent). */
 function segmentForGroup(rooftops: number, isTop150: boolean): SegmentCode {
   if (isTop150) return 'ENT_C';
@@ -62,8 +56,9 @@ type GroupVerdict = { sg: SegmentCode; gt: GroupType; ss: SubSector | null; roof
  * missing/zero) and the majority dealership type across members. Top-150 groups => Ent-C.
  *
  * Everything else is a SINGLE — no group name, OR a 1-rooftop "group" (functionally a
- * single dealer). Singles are sized by used-car count with a type-dependent SMB ceiling:
- * Franchise <=50 / Independent (and untyped) <=100 => SMB, above => MM_SINGLE, missing => UNSIZED.
+ * single dealer). Franchise singles are ALWAYS MM_SINGLE (never SMB). Independent/untyped
+ * singles are SMB at <=100 used cars, else MM_SINGLE. Any single missing a used-car count
+ * is UNSIZED (including unsized franchise).
  */
 export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): DealerGroupRow[] {
   // 1. Canonical group data keyed by normalized name (merge duplicate records).
@@ -120,10 +115,19 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
         continue;
       }
     }
-    // Single dealer (no group, or a demoted 1-rooftop "group") — size by used cars.
-    // Franchise singles use the lower (50) ceiling; independent/untyped use 100.
+    // Single dealer (no group, or a demoted 1-rooftop "group").
+    // Franchise singles are ALWAYS Mid Market (never SMB), regardless of used cars.
+    // Independent / untyped singles are SMB up to the used-car cap, else Mid Market.
+    // A single with no used-car count is UNSIZED (including unsized franchise — it has
+    // no size signal and is not "SMB"; enrich to classify).
     const cars = parseUsedCars(r.uc);
-    r.sg = cars == null ? 'UNSIZED' : cars <= smbCeilingFor(r.td) ? 'SMB' : 'MM_SINGLE';
+    if (cars == null) {
+      r.sg = 'UNSIZED';
+    } else if (r.td === 'Franchise') {
+      r.sg = 'MM_SINGLE';
+    } else {
+      r.sg = cars <= SMB_USED_CAR_MAX ? 'SMB' : 'MM_SINGLE';
+    }
     r.gt = null;
     r.ss = null;
   }
