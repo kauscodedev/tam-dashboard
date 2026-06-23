@@ -311,8 +311,10 @@ function MetricCard({
   reportHref,
   accounts,
   accountsUnit = 'groups',
+  subtitle,
   split,
   groupSplit,
+  rows,
   footer,
 }: {
   title: string
@@ -323,8 +325,10 @@ function MetricCard({
   reportHref?: string
   accounts?: number
   accountsUnit?: string
+  subtitle?: string
   split?: { rooftops?: number; franchise: number; independent: number }
   groupSplit?: { franchise: number; independent: number }
+  rows?: Array<{ label: string; franchise: number; independent: number; indent?: boolean; muted?: boolean }>
   footer?: React.ReactNode
 }) {
   // Group-based segments lead with the account/group count (region-independent),
@@ -383,6 +387,7 @@ function MetricCard({
             {formatNumber(isAccountsView ? accounts! : metric.rooftops)}
             {isAccountsView && <span className="ml-2 text-base font-medium text-slate-400">{accountsUnit}</span>}
           </p>
+          {subtitle && <p className="mt-1 text-xs text-slate-500">{subtitle}</p>}
         </div>
         {denominator !== undefined && !isAccountsView && (
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${pillClasses[tone]}`}>
@@ -390,36 +395,49 @@ function MetricCard({
           </span>
         )}
       </div>
-      {/* Inline split table — only rendered when there is actual split data */}
-      {(split || groupSplit) ? (
+      {/* Inline split table — custom rows take precedence, else group/rooftop split */}
+      {(rows || split || groupSplit) ? (
         <div className="mt-4">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-slate-400">
-                <th className="pb-1 text-left font-medium w-[40%]"></th>
+                <th className="pb-1 text-left font-medium w-[44%]"></th>
                 <th className="pb-1 text-right font-medium">Fr / GFD</th>
                 <th className="pb-1 text-right font-medium">Ind / IGD</th>
                 <th className="pb-1 text-right font-medium text-slate-600">Total</th>
               </tr>
             </thead>
             <tbody>
-              {groupSplit && (
-                <tr className="border-t border-slate-100">
-                  <td className="py-0.5 font-medium text-slate-600">Groups</td>
-                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.franchise)}</td>
-                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.independent)}</td>
-                  <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(groupSplit.franchise + groupSplit.independent)}</td>
-                </tr>
-              )}
-              {split && (
-                <tr className="border-t border-slate-100">
-                  <td className="py-0.5 font-medium text-slate-600">
-                    {formatNumber(split.rooftops ?? metric.rooftops)} rooftops
-                  </td>
-                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.franchise)}</td>
-                  <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.independent)}</td>
-                  <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(split.franchise + split.independent)}</td>
-                </tr>
+              {rows ? (
+                rows.map((r) => (
+                  <tr key={r.label} className="border-t border-slate-100">
+                    <td className={`py-0.5 ${r.indent ? 'pl-3 text-slate-400' : 'font-medium text-slate-600'}`}>{r.label}</td>
+                    <td className={`py-0.5 text-right tabular-nums ${r.muted ? 'text-slate-400' : 'text-slate-700'}`}>{formatNumber(r.franchise)}</td>
+                    <td className={`py-0.5 text-right tabular-nums ${r.muted ? 'text-slate-400' : 'text-slate-700'}`}>{formatNumber(r.independent)}</td>
+                    <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(r.franchise + r.independent)}</td>
+                  </tr>
+                ))
+              ) : (
+                <>
+                  {groupSplit && (
+                    <tr className="border-t border-slate-100">
+                      <td className="py-0.5 font-medium text-slate-600">Groups</td>
+                      <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.franchise)}</td>
+                      <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(groupSplit.independent)}</td>
+                      <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(groupSplit.franchise + groupSplit.independent)}</td>
+                    </tr>
+                  )}
+                  {split && (
+                    <tr className="border-t border-slate-100">
+                      <td className="py-0.5 font-medium text-slate-600">
+                        {formatNumber(split.rooftops ?? metric.rooftops)} rooftops
+                      </td>
+                      <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.franchise)}</td>
+                      <td className="py-0.5 text-right tabular-nums text-slate-700">{formatNumber(split.independent)}</td>
+                      <td className="py-0.5 text-right font-semibold tabular-nums text-slate-900">{formatNumber(split.franchise + split.independent)}</td>
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>
@@ -618,27 +636,31 @@ function StageBucketBreakdown({ stageMap }: { stageMap: StageMap }) {
   )
 }
 
-// Combined footer: aligned Pod | Stages toggles on one row
+// Combined footer: aligned Pod | Stages [| By rooftop] toggles on one row
 function CardFooter({
   podCounts,
   totalRooftops,
   stageMap,
   onPodRowClick,
+  rooftopPanel,
 }: {
   podCounts: Array<{ franchise: number; independent: number }>
   totalRooftops: number
   stageMap: StageMap
   onPodRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
+  rooftopPanel?: React.ReactNode
 }) {
-  const [panel, setPanel] = useState<'pod' | 'stages' | null>(null)
+  const [panel, setPanel] = useState<'pod' | 'stages' | 'rooftop' | null>(null)
   return (
     <div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <ToggleBtn label="Pod breakdown" open={panel === 'pod'} onClick={() => setPanel((p) => p === 'pod' ? null : 'pod')} />
         <ToggleBtn label="Stages" open={panel === 'stages'} onClick={() => setPanel((p) => p === 'stages' ? null : 'stages')} />
+        {rooftopPanel && <ToggleBtn label="By rooftop" open={panel === 'rooftop'} onClick={() => setPanel((p) => p === 'rooftop' ? null : 'rooftop')} />}
       </div>
       {panel === 'pod' && <PodBucketBreakdown podCounts={podCounts} totalRooftops={totalRooftops} onRowClick={onPodRowClick} />}
       {panel === 'stages' && <StageBucketBreakdown stageMap={stageMap} />}
+      {panel === 'rooftop' && <div className="mt-2">{rooftopPanel}</div>}
     </div>
   )
 }
@@ -649,20 +671,105 @@ type DealerGroupFull = { name: string; segment: string; type: string; rooftops: 
 function MMRooftopCountTable({
   groups,
   mmRooftopPodSplit,
+  range = [1, 10],
+  compact = false,
 }: {
   groups: DealerGroupFull[]
   mmRooftopPodSplit?: Record<string, Array<{ franchise: number; independent: number }>>
+  range?: [number, number]
+  compact?: boolean
 }) {
   const [openRow, setOpenRow] = useState<number | null>(null)
   const mmGroups = groups.filter((g) => g.segment === 'MM_GROUP')
-  const maxRooftop = Math.max(...mmGroups.map((g) => g.rooftops), 0)
   const buckets: Array<{ n: number; gfd: number; igd: number; groupNames: DealerGroupFull[] }> = []
-  for (let n = 1; n <= Math.min(maxRooftop, 10); n++) {
+  for (let n = range[0]; n <= range[1]; n++) {
     const matches = mmGroups.filter((g) => g.rooftops === n)
     buckets.push({ n, gfd: matches.filter((g) => g.type === 'GFD').length, igd: matches.filter((g) => g.type === 'IGD').length, groupNames: matches })
   }
   const totGfd = buckets.reduce((s, b) => s + b.gfd, 0)
   const totIgd = buckets.reduce((s, b) => s + b.igd, 0)
+  const pad = compact ? 'px-2 py-1.5' : 'px-4 py-2'
+
+  const tableEl = (
+    <div className="overflow-x-auto">
+      <table className={`w-full ${compact ? 'text-xs' : 'text-sm'}`}>
+        <thead>
+          <tr className={`${compact ? 'text-[10px]' : 'text-xs'} uppercase tracking-wide text-slate-500`}>
+            <th className={`${pad} text-left`}>Rooftops</th>
+            <th className={`${pad} text-right`}>GFD (Fr)</th>
+            <th className={`${pad} text-right`}>IGD (Ind)</th>
+            <th className={`${pad} text-right`}>Total</th>
+            <th className={`${pad} text-right`}>Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {buckets.map((b) => {
+            const total = b.gfd + b.igd
+            const share = totGfd + totIgd > 0 ? (total / (totGfd + totIgd)) * 100 : 0
+            const isOpen = openRow === b.n
+            const label = `${b.n} rooftop${b.n === 1 ? '' : 's'}`
+            return (
+              <React.Fragment key={b.n}>
+                <tr className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => setOpenRow(isOpen ? null : b.n)}>
+                  <td className={`${pad} font-medium text-blue-700 hover:underline`}>{label} {isOpen ? '▴' : '▾'}</td>
+                  <td className={`${pad} text-right tabular-nums text-slate-700`}>{formatNumber(b.gfd)}</td>
+                  <td className={`${pad} text-right tabular-nums text-slate-700`}>{formatNumber(b.igd)}</td>
+                  <td className={`${pad} text-right font-semibold tabular-nums text-slate-950`}>{formatNumber(total)}</td>
+                  <td className={`${pad} text-right tabular-nums text-slate-500`}>{share.toFixed(1)}%</td>
+                </tr>
+                {isOpen && (() => {
+                  const exactPodCounts = mmRooftopPodSplit?.[String(b.n)] ?? []
+                  const hasExactData = exactPodCounts.reduce((s, p) => s + p.franchise + p.independent, 0) > 0
+                  return (
+                    <tr className="border-t border-blue-100 bg-blue-50/40">
+                      <td colSpan={5} className={compact ? 'px-2 py-2' : 'px-4 py-3'}>
+                        <div className={`grid gap-6 ${compact ? '' : 'sm:grid-cols-2'}`}>
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Pod ownership — {label} <span className="font-normal normal-case text-slate-400">(groups, Fr=GFD/Ind=IGD)</span>
+                              {!hasExactData && <span className="ml-1 font-normal normal-case text-amber-600">refresh data</span>}
+                            </p>
+                            {hasExactData ? (
+                              <>
+                                <PodBucketBreakdown podCounts={exactPodCounts} totalRooftops={b.gfd + b.igd} />
+                                <p className="mt-1 text-[10px] italic text-slate-400">Each group counted once, assigned to the pod owning the most of its rooftops.</p>
+                              </>
+                            ) : (
+                              <p className="text-xs italic text-slate-400">No pod data yet — trigger a sync.</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Groups with exactly {label} ({b.groupNames.length})</p>
+                            <div className="max-h-52 space-y-0.5 overflow-y-auto text-xs">
+                              {b.groupNames.map((g) => (
+                                <div key={g.name} className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-slate-700">{g.name}</span>
+                                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${g.type === 'GFD' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{g.type}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })()}
+              </React.Fragment>
+            )
+          })}
+          <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
+            <td className={pad}>Total</td>
+            <td className={`${pad} text-right tabular-nums`}>{formatNumber(totGfd)}</td>
+            <td className={`${pad} text-right tabular-nums`}>{formatNumber(totIgd)}</td>
+            <td className={`${pad} text-right tabular-nums`}>{formatNumber(totGfd + totIgd)}</td>
+            <td className={`${pad} text-right`}>100%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+
+  if (compact) return tableEl
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -680,92 +787,7 @@ function MMRooftopCountTable({
           <Download className="h-4 w-4" />
         </button>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-2 text-left">Rooftops</th>
-              <th className="px-4 py-2 text-right">GFD (Fr)</th>
-              <th className="px-4 py-2 text-right">IGD (Ind)</th>
-              <th className="px-4 py-2 text-right">Total</th>
-              <th className="px-4 py-2 text-right">Share</th>
-            </tr>
-          </thead>
-          <tbody>
-            {buckets.map((b) => {
-              const total = b.gfd + b.igd
-              const share = totGfd + totIgd > 0 ? (total / (totGfd + totIgd)) * 100 : 0
-              const isOpen = openRow === b.n
-              const label = `${b.n} rooftop${b.n === 1 ? '' : 's'}`
-              return (
-                <React.Fragment key={b.n}>
-                  <tr
-                    className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
-                    onClick={() => setOpenRow(isOpen ? null : b.n)}
-                  >
-                    <td className="px-4 py-2 font-medium text-blue-700 hover:underline">
-                      {label} {isOpen ? '▴' : '▾'}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.gfd)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.igd)}</td>
-                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(total)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-500">{share.toFixed(1)}%</td>
-                  </tr>
-                  {isOpen && (() => {
-                    const exactPodCounts = mmRooftopPodSplit?.[String(b.n)] ?? []
-                    const exactTotal = exactPodCounts.reduce((s, p) => s + p.franchise + p.independent, 0)
-                    const hasExactData = exactPodCounts.length > 0 && exactTotal > 0
-                    return (
-                      <tr className="border-t border-blue-100 bg-blue-50/40">
-                        <td colSpan={5} className="px-4 py-3">
-                          <div className="grid gap-6 sm:grid-cols-2">
-                            {/* Pod split — groups with exactly N rooftops, by plurality owner */}
-                            <div>
-                              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                Pod ownership — {label} <span className="font-normal normal-case text-slate-400">(groups, Fr=GFD/Ind=IGD)</span>
-                                {!hasExactData && <span className="ml-1 font-normal normal-case text-amber-600">refresh data</span>}
-                              </p>
-                              {hasExactData ? (
-                                <>
-                                  <PodBucketBreakdown podCounts={exactPodCounts} totalRooftops={b.gfd + b.igd} />
-                                  <p className="mt-1 text-[10px] italic text-slate-400">Each group counted once, assigned to the pod owning the most of its rooftops.</p>
-                                </>
-                              ) : (
-                                <p className="text-xs italic text-slate-400">No pod data yet — trigger a sync to compute the per-rooftop-count pod split.</p>
-                              )}
-                            </div>
-                            {/* Group names for this exact count */}
-                            <div>
-                              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                Groups with exactly {label} ({b.groupNames.length})
-                              </p>
-                              <div className="max-h-52 space-y-0.5 overflow-y-auto text-xs">
-                                {b.groupNames.map((g) => (
-                                  <div key={g.name} className="flex items-center justify-between gap-2">
-                                    <span className="truncate text-slate-700">{g.name}</span>
-                                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${g.type === 'GFD' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{g.type}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })()}
-                </React.Fragment>
-              )
-            })}
-            <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
-              <td className="px-4 py-2">Total</td>
-              <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totGfd)}</td>
-              <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totIgd)}</td>
-              <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totGfd + totIgd)}</td>
-              <td className="px-4 py-2 text-right">100%</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {tableEl}
     </section>
   )
 }
@@ -1493,9 +1515,14 @@ function DashboardContent() {
                   metric={ZERO_METRIC}
                   accounts={seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.groups + seg.M.MM_6_10.groups}
                   accountsUnit=""
-                  split={seg.mmSub}
-                  groupSplit={{ franchise: seg.mmSub.gfdGroups, independent: seg.mmSub.igdGroups }}
-                  helper="All Mid Market: singles >100 cars + groups ≤10 rooftops."
+                  subtitle={`${formatNumber(seg.M.MM_SINGLE.rooftops)} single + ${formatNumber(seg.M.MM_LE5.groups + seg.M.MM_6_10.groups)} groups`}
+                  rows={[
+                    { label: 'Single dealers', franchise: seg.M.MM_SINGLE.franchise, independent: seg.M.MM_SINGLE.independent },
+                    { label: 'Groups', franchise: seg.M.MM_LE5.gfdGroups + seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_LE5.igdGroups + seg.M.MM_6_10.igdGroups },
+                    { label: 'Groups · ≤5 rooftops', franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups, indent: true },
+                    { label: 'Groups · 6–10 rooftops', franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups, indent: true },
+                  ]}
+                  helper="Single dealers (>100 cars) + dealer groups (≤10 rooftops). Groups with 11+ rooftops are Enterprise."
                   footer={<CardFooter podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} stageMap={seg.stageMM_ALL} onPodRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
                 />
                 <MetricCard
@@ -1513,7 +1540,8 @@ function DashboardContent() {
                   split={seg.M.MM_LE5}
                   groupSplit={{ franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups }}
                   helper="Dealer groups with ≤5 rooftops."
-                  footer={<CardFooter podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} stageMap={seg.stageByBucket.MM_LE5} onPodRowClick={podBucketDrilldown('MM_LE5', 'MM — Group ≤5')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} stageMap={seg.stageByBucket.MM_LE5} onPodRowClick={podBucketDrilldown('MM_LE5', 'MM — Group ≤5')}
+                    rooftopPanel={<MMRooftopCountTable groups={(segmentation.groups ?? []) as DealerGroupFull[]} mmRooftopPodSplit={segmentation.mmRooftopPodSplit} range={[1, 5]} compact />} />}
                 />
                 <MetricCard
                   title="Mid Market — Group 6–10"
@@ -1522,7 +1550,8 @@ function DashboardContent() {
                   split={seg.M.MM_6_10}
                   groupSplit={{ franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups }}
                   helper="Dealer groups with 6–10 rooftops."
-                  footer={<CardFooter podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} stageMap={seg.stageByBucket.MM_6_10} onPodRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')} />}
+                  footer={<CardFooter podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} stageMap={seg.stageByBucket.MM_6_10} onPodRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')}
+                    rooftopPanel={<MMRooftopCountTable groups={(segmentation.groups ?? []) as DealerGroupFull[]} mmRooftopPodSplit={segmentation.mmRooftopPodSplit} range={[6, 10]} compact />} />}
                 />
               </div>
 
