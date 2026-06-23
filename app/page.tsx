@@ -649,11 +649,9 @@ type DealerGroupFull = { name: string; segment: string; type: string; rooftops: 
 function MMRooftopCountTable({
   groups,
   mmRooftopPodSplit,
-  onPodRowClick,
 }: {
   groups: DealerGroupFull[]
   mmRooftopPodSplit?: Record<string, Array<{ franchise: number; independent: number }>>
-  onPodRowClick: (label: string, _total: number, podCounts: Array<{ franchise: number; independent: number }>) => (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
 }) {
   const [openRow, setOpenRow] = useState<number | null>(null)
   const mmGroups = groups.filter((g) => g.segment === 'MM_GROUP')
@@ -721,20 +719,19 @@ function MMRooftopCountTable({
                       <tr className="border-t border-blue-100 bg-blue-50/40">
                         <td colSpan={5} className="px-4 py-3">
                           <div className="grid gap-6 sm:grid-cols-2">
-                            {/* Pod split — exact N rooftops */}
+                            {/* Pod split — groups with exactly N rooftops, by plurality owner */}
                             <div>
                               <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                Pod ownership — {label}
-                                {!hasExactData && <span className="ml-1 font-normal normal-case text-amber-600">refresh data to populate</span>}
+                                Pod ownership — {label} <span className="font-normal normal-case text-slate-400">(groups, Fr=GFD/Ind=IGD)</span>
+                                {!hasExactData && <span className="ml-1 font-normal normal-case text-amber-600">refresh data</span>}
                               </p>
                               {hasExactData ? (
-                                <PodBucketBreakdown
-                                  podCounts={exactPodCounts}
-                                  totalRooftops={b.gfd + b.igd}
-                                  onRowClick={onPodRowClick(label, 0, exactPodCounts)}
-                                />
+                                <>
+                                  <PodBucketBreakdown podCounts={exactPodCounts} totalRooftops={b.gfd + b.igd} />
+                                  <p className="mt-1 text-[10px] italic text-slate-400">Each group counted once, assigned to the pod owning the most of its rooftops.</p>
+                                </>
                               ) : (
-                                <p className="text-xs italic text-slate-400">No pod data yet — trigger a sync to compute exact per-rooftop-count pod split.</p>
+                                <p className="text-xs italic text-slate-400">No pod data yet — trigger a sync to compute the per-rooftop-count pod split.</p>
                               )}
                             </div>
                             {/* Group names for this exact count */}
@@ -776,12 +773,14 @@ function MMRooftopCountTable({
 // ── SMB deep dive ─────────────────────────────────────────────────────────────
 type CellLike = { rooftops: number; franchise: number; independent: number }
 function SMBDeepDive({
-  cell, smbGt50, smbPodGt50, smbPodLe50, onPodRowClick,
+  cell, smbGt50, smbPodGt50, smbPodLe50, smbStageGt50, smbStageLe50, onPodRowClick,
 }: {
   cell: CellLike
   smbGt50?: { franchise: number; independent: number; rooftops: number }
   smbPodGt50?: Array<{ franchise: number; independent: number }>
   smbPodLe50?: Array<{ franchise: number; independent: number }>
+  smbStageGt50?: Record<string, { franchise: number; independent: number }>
+  smbStageLe50?: Record<string, { franchise: number; independent: number }>
   onPodRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
 }) {
   const [podPanel, setPodPanel] = useState<'gt50' | 'le50' | null>(null)
@@ -864,6 +863,12 @@ function SMBDeepDive({
                       ) : (
                         <p className="text-xs italic text-slate-400">Trigger a sync to compute per-pod &gt;50 used-car breakdown.</p>
                       )}
+                      {smbStageGt50 && Object.keys(smbStageGt50).length > 0 && (
+                        <div className="mt-3">
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Lifecycle stage (GD Level) — &gt;50 used cars</p>
+                          <StageBucketBreakdown stageMap={smbStageGt50} />
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -888,6 +893,12 @@ function SMBDeepDive({
                         <PodBucketBreakdown podCounts={smbPodLe50!} totalRooftops={frLe50 + indLe50} onRowClick={onPodRowClick} />
                       ) : (
                         <p className="text-xs italic text-slate-400">Trigger a sync to compute per-pod ≤50 used-car breakdown.</p>
+                      )}
+                      {smbStageLe50 && Object.keys(smbStageLe50).length > 0 && (
+                        <div className="mt-3">
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Lifecycle stage (GD Level) — ≤50 used cars</p>
+                          <StageBucketBreakdown stageMap={smbStageLe50} />
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -1587,26 +1598,14 @@ function DashboardContent() {
                 <MMRooftopCountTable
                   groups={(segmentation.groups ?? []) as DealerGroupFull[]}
                   mmRooftopPodSplit={segmentation.mmRooftopPodSplit}
-                  onPodRowClick={(label, _total, _podCounts) => (podIdx, type) => {
-                    const records = filteredData.relevantRecords.filter((r) =>
-                      r.ow != null && OWNER_TO_POD[r.ow] === podIdx &&
-                      r.sg === 'MM_GROUP' &&
-                      (type === null || r.td === type)
-                    )
-                    setDrilldown({
-                      reportTitle: `MM Group — ${label}`,
-                      segmentLabel: type ?? 'All types',
-                      segmentColumn: 'Pod',
-                      measure: 'rooftops',
-                      records,
-                    })
-                  }}
                 />
                 <SMBDeepDive
                   cell={seg.M.SMB}
                   smbGt50={segmentation.smbGt50}
                   smbPodGt50={segmentation.smbPodGt50}
                   smbPodLe50={segmentation.smbPodLe50}
+                  smbStageGt50={segmentation.smbStageGt50}
+                  smbStageLe50={segmentation.smbStageLe50}
                   onPodRowClick={podBucketDrilldown('SMB', 'SMB')}
                 />
               </div>

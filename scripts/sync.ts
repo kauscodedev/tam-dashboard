@@ -97,31 +97,38 @@ async function main(): Promise<void> {
     const dealerGroupRows = tagSegments(allRecords, dealerGroups);
     // ── Pre-drop computations (while uc and gn still exist on records) ─────────
 
-    // 1. SMB >50 / ≤50 aggregate + per-pod breakdown.
+    // 1. SMB >50 / ≤50 aggregate + per-pod breakdown + per-stage breakdown.
     const smbGt50 = { franchise: 0, independent: 0, rooftops: 0 };
     const mkPodSplit = () => PODS.map(() => ({ franchise: 0, independent: 0 }));
     const smbPodGt50 = mkPodSplit();
     const smbPodLe50 = mkPodSplit();
+    const smbStageGt50: Record<string, { franchise: number; independent: number }> = {};
+    const smbStageLe50: Record<string, { franchise: number; independent: number }> = {};
+    const addStage = (map: Record<string, { franchise: number; independent: number }>, stage: string, td: string | null) => {
+      if (!map[stage]) map[stage] = { franchise: 0, independent: 0 };
+      if (td === 'Franchise') map[stage].franchise++;
+      else if (td === 'Independent') map[stage].independent++;
+    };
 
-    // 2. MM rooftop-count pod breakdown (exact N per pod).
-    //    Build name→canonicalRooftops from the canonical group list.
-    const groupRooftopsMap = new Map<string, number>();
-    for (const g of dealerGroupRows) {
-      if (g.rooftops != null) groupRooftopsMap.set(normalizeGroupName(g.name), g.rooftops);
-    }
+    // 2. MM rooftop-count pod breakdown — counts GROUPS per pod (by plurality of
+    //    rooftop ownership) so the numbers reconcile with the group-count rows.
     const MAX_RT = 10;
-    const mmRooftopPodSplit: Record<string, Array<{ franchise: number; independent: number }>> = {};
-    for (let n = 1; n <= MAX_RT; n++) mmRooftopPodSplit[String(n)] = mkPodSplit();
+    // Tally each MM group's rooftop ownership across pods (keyed by normalized name).
+    const groupPodTally = new Map<string, number[]>();
 
     for (const r of allRecords) {
       // SMB used-car band split.
       if (r.sg === 'SMB' && r.uc != null) {
         const cars = Number(r.uc);
         if (Number.isFinite(cars)) {
+          const stage = r.lv ?? '(No value)';
           if (cars > 50) {
             smbGt50.rooftops++;
             if (r.td === 'Franchise') smbGt50.franchise++;
             else if (r.td === 'Independent') smbGt50.independent++;
+            addStage(smbStageGt50, stage, r.td);
+          } else {
+            addStage(smbStageLe50, stage, r.td);
           }
           const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined;
           if (podIdx !== undefined) {
@@ -131,18 +138,32 @@ async function main(): Promise<void> {
           }
         }
       }
-      // MM exact-rooftop-count pod split.
+      // MM group → tally rooftop ownership per pod.
       if (r.sg === 'MM_GROUP' && r.gn != null) {
-        const canonicalRt = groupRooftopsMap.get(normalizeGroupName(r.gn));
-        if (canonicalRt != null && canonicalRt >= 1 && canonicalRt <= MAX_RT) {
-          const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined;
-          if (podIdx !== undefined) {
-            const bucket = mmRooftopPodSplit[String(canonicalRt)][podIdx];
-            if (r.td === 'Franchise') bucket.franchise++;
-            else if (r.td === 'Independent') bucket.independent++;
-          }
+        const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined;
+        if (podIdx !== undefined) {
+          const key = normalizeGroupName(r.gn);
+          let arr = groupPodTally.get(key);
+          if (!arr) { arr = PODS.map(() => 0); groupPodTally.set(key, arr); }
+          arr[podIdx]++;
         }
       }
+    }
+
+    // Assign each canonical MM group to its plurality pod, bucket by exact rooftop
+    // count + type (GFD→franchise, IGD→independent). Sums reconcile with row totals.
+    const mmRooftopPodSplit: Record<string, Array<{ franchise: number; independent: number }>> = {};
+    for (let n = 1; n <= MAX_RT; n++) mmRooftopPodSplit[String(n)] = mkPodSplit();
+    for (const g of dealerGroupRows) {
+      if (g.segment !== 'MM_GROUP' || g.rooftops == null || g.rooftops < 1 || g.rooftops > MAX_RT) continue;
+      const tally = groupPodTally.get(normalizeGroupName(g.name));
+      if (!tally) continue; // no pod owns any rooftop → unattributed (UI derives it)
+      let pluralityPod = -1, max = 0;
+      for (let i = 0; i < tally.length; i++) { if (tally[i] > max) { max = tally[i]; pluralityPod = i; } }
+      if (pluralityPod < 0) continue;
+      const bucket = mmRooftopPodSplit[String(g.rooftops)][pluralityPod];
+      if (g.type === 'GFD') bucket.franchise++;
+      else bucket.independent++;
     }
 
     // `uc` and `gn` only needed during tagging + pre-drop computation — drop now.
@@ -159,6 +180,8 @@ async function main(): Promise<void> {
     aggregated.segmentation.smbGt50 = smbGt50;
     aggregated.segmentation.smbPodGt50 = smbPodGt50;
     aggregated.segmentation.smbPodLe50 = smbPodLe50;
+    aggregated.segmentation.smbStageGt50 = smbStageGt50;
+    aggregated.segmentation.smbStageLe50 = smbStageLe50;
     aggregated.segmentation.mmRooftopPodSplit = mmRooftopPodSplit;
 
     const { summaries } = aggregated;

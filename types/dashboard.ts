@@ -80,6 +80,10 @@ export interface SegmentationData {
   smbPodGt50?: Array<{ franchise: number; independent: number }>;
   /** Per-pod SMB breakdown for ≤50 used cars. Index matches PODS order. */
   smbPodLe50?: Array<{ franchise: number; independent: number }>;
+  /** SMB >50 used cars by lifecycle stage (GD Level) × Fr/Ind. */
+  smbStageGt50?: Record<string, { franchise: number; independent: number }>;
+  /** SMB ≤50 used cars by lifecycle stage (GD Level) × Fr/Ind. */
+  smbStageLe50?: Record<string, { franchise: number; independent: number }>;
   /**
    * Per-rooftop-count pod breakdown for MM_GROUP records.
    * Key = rooftop count (as string "1".."10"); value = array indexed by pod.

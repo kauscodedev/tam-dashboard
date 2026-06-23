@@ -54,6 +54,8 @@ export function applyFilters(
       smbGt50: data.segmentation.smbGt50,
       smbPodGt50: data.segmentation.smbPodGt50,
       smbPodLe50: data.segmentation.smbPodLe50,
+      smbStageGt50: data.segmentation.smbStageGt50,
+      smbStageLe50: data.segmentation.smbStageLe50,
       mmRooftopPodSplit: data.segmentation.mmRooftopPodSplit,
     },
   };
