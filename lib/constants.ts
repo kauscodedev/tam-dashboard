@@ -30,10 +30,17 @@ export const FIELD_MAP = {
 // joins are done by normalized `dealship_group_name`.
 export const DEALER_GROUP_OBJECT_TYPE = '2-169112502';
 // Single-dealer used-car threshold: <= SMB, > Mid Market (resolves the framework's
-// open "exactly 100" boundary as SMB-inclusive).
+// open "exactly 100" boundary as SMB-inclusive). Independent/untyped singles use this.
 export const SMB_USED_CAR_MAX = 100;
+// Franchise singles graduate to Mid Market at a lower bar: franchise rooftops monetize
+// differently, so a franchise single above 50 used cars is Mid Market, not SMB.
+export const SMB_USED_CAR_MAX_FRANCHISE = 50;
 // Rooftop boundaries for group sizing.
-export const MID_MARKET_ROOFTOP_MAX = 10; // <=10 rooftops => Mid Market group
+// A "group" must have at least this many rooftops to be sized as a group. A group whose
+// canonical rooftop count is below this (i.e. 1) is functionally a single dealer and is
+// re-tagged as a single (sized by used cars) instead of MM_GROUP.
+export const MID_MARKET_ROOFTOP_MIN = 2;
+export const MID_MARKET_ROOFTOP_MAX = 10; // 2-10 rooftops => Mid Market group
 export const ENTERPRISE_A_ROOFTOP_MAX = 15; // 11-15 => Enterprise-A; 16+ => Enterprise-B
 // dealership_rank enum value that marks a Top-150 group => Enterprise-C.
 export const TOP_150_RANK = 'Top 150';

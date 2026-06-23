@@ -11,6 +11,8 @@ import type {
 } from '../../types/dashboard';
 import {
   SMB_USED_CAR_MAX,
+  SMB_USED_CAR_MAX_FRANCHISE,
+  MID_MARKET_ROOFTOP_MIN,
   MID_MARKET_ROOFTOP_MAX,
   ENTERPRISE_A_ROOFTOP_MAX,
   TOP_150_RANK,
@@ -31,7 +33,12 @@ function parseUsedCars(value: string | null): number | null {
 }
 
 function subSectorFor(rooftops: number): SubSector {
-  return rooftops <= 5 ? '1-5' : '6-10';
+  return rooftops <= 5 ? '2-5' : '6-10';
+}
+
+/** Used-car ceiling at/under which a single dealer is SMB (type-dependent). */
+function smbCeilingFor(type: string | null): number {
+  return type === 'Franchise' ? SMB_USED_CAR_MAX_FRANCHISE : SMB_USED_CAR_MAX;
 }
 
 /** A group's segment from its canonical rooftop count + Top-150 rank (region-independent). */
@@ -49,10 +56,14 @@ type GroupVerdict = { sg: SegmentCode; gt: GroupType; ss: SubSector | null; roof
 /**
  * Mutates each record in place, baking the AOP segment tags `sg`/`gt`/`ss`.
  *
- * Singles (no `gn`) are sized by used-car count. Group members are classified by
- * their group's canonical rooftop count (group-object `rooftops` rollup, falling
- * back to the count of member records when the rollup is missing/zero) and the
- * majority dealership type across the group's members. Top-150 groups => Ent-C.
+ * A record is a GROUP only if it has a `gn` AND its group's canonical rooftop count is
+ * >= MID_MARKET_ROOFTOP_MIN (2), or the group is Top-150. Groups are sized by canonical
+ * rooftops (group-object `rooftops` rollup, falling back to member-record count when
+ * missing/zero) and the majority dealership type across members. Top-150 groups => Ent-C.
+ *
+ * Everything else is a SINGLE — no group name, OR a 1-rooftop "group" (functionally a
+ * single dealer). Singles are sized by used-car count with a type-dependent SMB ceiling:
+ * Franchise <=50 / Independent (and untyped) <=100 => SMB, above => MM_SINGLE, missing => UNSIZED.
  */
 export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): DealerGroupRow[] {
   // 1. Canonical group data keyed by normalized name (merge duplicate records).
@@ -88,6 +99,10 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
     const rollup = meta?.rooftops ?? null;
     const rooftops = rollup != null && rollup > 0 ? rollup : t.n;
     const isTop150 = meta?.rank === TOP_150_RANK;
+    // A "group" with only 1 rooftop is functionally a single dealer — leave it
+    // without a group verdict so step 4 sizes its records as singles (by used cars).
+    // Top-150 is a curated list and always stays a group.
+    if (rooftops < MID_MARKET_ROOFTOP_MIN && !isTop150) continue;
     const gt: GroupType = t.fr > t.ind ? 'GFD' : 'IGD'; // 50/50 tie -> IGD
     const sg = segmentForGroup(rooftops, isTop150);
     verdict.set(key, { sg, gt, ss: sg === 'MM_GROUP' ? subSectorFor(rooftops) : null, rooftops });
@@ -105,9 +120,10 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
         continue;
       }
     }
-    // Single dealer — size by used cars.
+    // Single dealer (no group, or a demoted 1-rooftop "group") — size by used cars.
+    // Franchise singles use the lower (50) ceiling; independent/untyped use 100.
     const cars = parseUsedCars(r.uc);
-    r.sg = cars == null ? 'UNSIZED' : cars <= SMB_USED_CAR_MAX ? 'SMB' : 'MM_SINGLE';
+    r.sg = cars == null ? 'UNSIZED' : cars <= smbCeilingFor(r.td) ? 'SMB' : 'MM_SINGLE';
     r.gt = null;
     r.ss = null;
   }
@@ -124,8 +140,10 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
     const isTop150 = meta.rank === TOP_150_RANK;
     const rollup = meta.rooftops ?? null;
     const rooftops = rollup != null && rollup > 0 ? rollup : t ? t.n : 0;
-    // Skip empty shells (no rooftops AND no members) unless they're ranked Top 150.
-    if (rooftops <= 0 && !isTop150) continue;
+    // A group with fewer than 2 rooftops is a single dealer, not a group account —
+    // exclude it from the target list (its records are tagged as singles in step 4).
+    // Top-150 groups are always kept regardless of rollup.
+    if (rooftops < MID_MARKET_ROOFTOP_MIN && !isTop150) continue;
     const gt: GroupType = t ? (t.fr >= t.ind ? 'GFD' : 'IGD') : 'GFD';
     groupRows.push({
       name: meta.name || (t?.name ?? key),
@@ -165,9 +183,9 @@ class Counter {
   }
 }
 
-const SUBSECTORS: SubSector[] = ['1-5', '6-10'];
+const SUBSECTORS: SubSector[] = ['2-5', '6-10'];
 const SUBSECTOR_LABEL: Record<SubSector, string> = {
-  '1-5': '≤5 rooftops',
+  '2-5': '2-5 rooftops',
   '6-10': '6-10 rooftops',
 };
 

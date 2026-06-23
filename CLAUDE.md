@@ -38,13 +38,17 @@ workflow's `node-version` in lockstep, all at 22+.
 ## Architecture
 
 ```text
-GitHub Actions (workflow_dispatch or scheduled)
+GitHub Actions (workflow_dispatch or daily cron)
   └── scripts/sync.ts
+        0. PUT sync-status.json = { status: 'syncing' } -> Vercel Blob (public)
         1. fetchMetadata()      -> LabelMap
         2. fetchAllCompanies()  -> MinifiedRecord[] (~168K+ records)
-        3. aggregate()          -> AggregatedData (O(n) single pass)
-        4. PUT tam-data.json    -> Vercel Blob (private)
-        5. PUT sync-status.json -> Vercel Blob (public)
+        3. fetchDealerGroups()  -> DealerGroup[] (Dealership Group Names custom object)
+        4. tagSegments()        -> bakes sg/gt/ss onto records + pre-drop pod/stage
+                                   computations (smb*/mmRooftopPodSplit); returns group list
+        5. aggregate()          -> AggregatedData (O(n) single pass)
+        6. PUT tam-data.json    -> Vercel Blob (private)
+        7. PUT sync-status.json = { status: 'success' } -> Vercel Blob (public)
 
 Next.js on Vercel:
   /api/data          -> auth check -> read tam-data.json from Blob -> return JSON
@@ -75,8 +79,9 @@ import { FilterBar } from '@/components/FilterBarNew'
 ```
 
 So the **active** UI files are: `BreakdownTableNew.tsx`, `FilterBarNew.tsx`, `CrossTabTable.tsx`,
-`DrilldownModal.tsx`, `SyncStatusBanner.tsx`. `MetricCard` is defined **inline** in `app/page.tsx`
-(around line 285), not imported.
+`DrilldownModal.tsx`, `SyncStatusBanner.tsx`, `DealerGroupTable.tsx` (AOP group target list), and
+`PodView.tsx` (Pod View section). `MetricCard` is defined **inline** near the top of `app/page.tsx`,
+not imported. `components/ui/` holds shared low-level primitives.
 
 `components/BreakdownTable.tsx`, `components/FilterBar.tsx`, `components/MetricCard.tsx`, and
 `components/MetricCardNew.tsx` are **unused legacy files** — do not edit them expecting UI changes.
@@ -204,14 +209,28 @@ were added to `FIELD_MAP`/`MinifiedRecord`. The **Dealership Group Names** custo
 `dealership_group_name`** (`normalizeGroupName`).
 
 **Tagging (`lib/aggregation/segment.ts → tagSegments`)** runs once at sync and bakes three
-tags onto every record (`sg`/`gt`/`ss`), then returns the canonical group list:
+tags onto every record (`sg`/`gt`/`ss`), then returns the canonical group list. The full
+decision tree (this is the authoritative spec — see also `docs/market-segment-hubspot-spec.md`
+for the HubSpot `Market_segment` property mirroring it):
 
-- **Single** (`gn` blank): `uc <= 100` → `SMB`; `> 100` → `MM_SINGLE`; missing → `UNSIZED`.
-- **Group** (`gn` present): sized by the group's canonical rooftops (group-object `rooftops`,
-  falling back to member-record count when 0/missing). `> 15` → `ENT_B`; `11–15` → `ENT_A`;
-  `<= 10` → `MM_GROUP`; `dealership_rank = "Top 150"` → `ENT_C` (overrides). Group type `gt` is
-  the majority of `td` across members (50/50 tie → IGD). MM groups also get a rooftop
-  sub-sector `ss` (`1` / `2-3` / `4-6` / `7-10`).
+**Step 1 — Group vs Single.** A record is a **Group** only if it has a `gn` (`dealership_group_name`)
+**and** the group's canonical rooftop count is **≥ 2** (`MID_MARKET_ROOFTOP_MIN`). Otherwise it is a
+**Single** — this includes records with no group name *and* records whose "group" has only 1 rooftop
+(a 1-rooftop group is functionally a single dealer). Canonical rooftops = group-object `rooftops`
+rollup, falling back to member-record count when the rollup is 0/missing. **Exception:** a
+`dealership_rank = "Top 150"` group is always a Group regardless of rooftop count.
+
+- **Group** (sized by canonical rooftops): `Top 150` → `ENT_C` (overrides all); `> 15` → `ENT_B`;
+  `11–15` → `ENT_A`; `2–10` → `MM_GROUP`. Group type `gt` is the majority of `td` across members
+  (50/50 tie → IGD). MM groups get a rooftop sub-sector `ss` — two bands, `2-5` and `6-10` (see
+  `SubSector`/`SUBSECTORS`).
+- **Single** (sized by used cars `uc`, **type-dependent** ceiling): missing `uc` → `UNSIZED`;
+  **Franchise** (`td = "Franchise"`) `uc <= 50` → `SMB`, `> 50` → `MM_SINGLE`;
+  **Independent / other** `uc <= 100` → `SMB`, `> 100` → `MM_SINGLE`. `gt`/`ss` are null for singles.
+
+The asymmetric SMB ceiling (`SMB_USED_CAR_MAX_FRANCHISE = 50`, `SMB_USED_CAR_MAX = 100`) is
+deliberate: franchise rooftops monetize differently, so a franchise single above 50 used cars is
+Mid Market while an independent single stays SMB up to 100.
 
 Because the tags are baked onto records, `buildSegmentation()` recomputes segment counts on
 every client-side filter with no extra plumbing. The **group target list**
@@ -231,10 +250,29 @@ tagging) — `sg`/`gt`/`ss` carry segmentation client-side and the group list li
 **Franchise vs Independent split:** every segment card and the **TAM Segmentation Matrix** table
 show a Franchise/Independent split. Singles split by record `td` (filter-responsive); groups split
 by canonical group type GFD↔Franchise / IGD↔Independent (region-independent). The matrix and the
-MM-Group cards bucket groups by **≤5** and **6–10** rooftops (a UI presentation of the framework's
-≤10 Mid Market group band; the underlying `mmSubSectors` 2-3/4-6/7-10 data is retained but not
-rendered). These splits are computed in `app/page.tsx` (the `seg` memo) from data already in the
-blob — no extra synced fields.
+MM-Group cards bucket groups by **2–5** and **6–10** rooftops; this matches the `mmSubSectors`
+`2-5`/`6-10` bands (the framework's 2–10 Mid Market group band — 1-rooftop "groups" are singles). The
+card-level Fr/Ind splits are recomputed client-side in `app/page.tsx` (the `seg` memo) from the baked
+`sg`/`gt`/`ss` tags.
+
+**Sync-time pre-computed splits (NOT client-derived):** some splits need *exact* counts that a
+filtered client record set cannot reconstruct, so `scripts/sync.ts` computes them once at sync
+(before `uc`/`gn` are dropped) and bakes them onto `segmentation` (declared in `types/dashboard.ts`):
+
+- `smbGt50` — SMB dealers with >50 used cars (aggregate Fr/Ind/rooftops).
+- `smbPodGt50` / `smbPodLe50` — per-pod SMB Fr/Ind breakdown for >50 / ≤50 used cars (array indexed by `PODS` order).
+- `smbStageGt50` / `smbStageLe50` — SMB Fr/Ind by lifecycle (GD Level) stage for >50 / ≤50 used cars.
+- `mmRooftopPodSplit` — MM_GROUP per-rooftop-count (`"2".."10"`) per-pod Fr/Ind split. Each group is
+  assigned to its **plurality-of-rooftop-ownership** pod so the numbers reconcile with the group-count rows.
+
+The `seg` memo *consumes* these fields; it does not recompute them.
+
+**UI surfaces:** a **Mid Market — Total** card rolls up MM_SINGLE + MM_GROUP (2–5 and 6–10). Each
+MM-Group card embeds a "By rooftop" breakdown table (`MMRooftopCountTable`, range starts at 2 rooftops,
+fed by `mmRooftopPodSplit`), and the SMB card / SMB Deep Dive has a >50 / ≤50 used-car split (fed by
+`smbStage*`/`smbPod*`). After the franchise re-tag the SMB **>50** band is effectively
+Independent-only (franchise singles >50 are now Mid Market). These are presentations of the
+pre-computed payload fields above, not new data sources.
 
 **Export:** every metric card, breakdown table, the segmentation matrix, the dealer-group target
 list, the cross-tab, and the Pod View have a CSV download (`lib/exportCsv.ts`) that opens in Excel/Sheets.
@@ -247,13 +285,21 @@ Unsized). Pod rosters + owner IDs are hard-coded in `lib/pods.ts` (`PODS`, `OWNE
 against `/crm/v3/owners`. A few HubSpot display names differ from the org chart (Namrata Sharma = "Nam
 Harrison", Vanshit Kothari = "Vans", Anisha = Anisha Jaiswal, Jaiaditya Berry = "Jay Berry"). Pod stats
 are computed in `app/page.tsx` (the `seg` memo) over the relevant base; records owned by non-pod people
-are not attributed. Update `lib/pods.ts` when the roster changes — no re-sync needed for roster edits,
-only the one-time addition of the `ow` field required a sync.
+are not attributed. The exception is the SMB ≤50/>50 and MM rooftop-count pod splits, which are
+**pre-computed at sync** (`segmentation.smbPod*` and `segmentation.mmRooftopPodSplit`; see the
+"Sync-time pre-computed splits" note above) — the `seg` memo reads these rather than re-deriving them.
+Update `lib/pods.ts` when the roster changes — no re-sync needed for roster edits, only the one-time
+addition of the `ow` field required a sync (and pod-split pre-computation is keyed off `OWNER_TO_POD`
+order at sync time, so adding/reordering pods does require a re-sync to refresh those fields).
 
-Boundary resolutions (the framework's open items): SMB is ≤100-inclusive; Enterprise-A is
-11–15 and Enterprise-B is 16+; MM sub-sectors apply to both GFD and IGD; 50/50 type ties → IGD.
-Segment counts cover the **relevant base** (so they sum to Relevant TAM rooftops), not the
-known-domain base. A global **AOP Segment** filter (`FilterState.segment`, key `sg`) was added.
+Boundary resolutions (the framework's open items): SMB single ceiling is **type-dependent**
+(Franchise ≤50, Independent ≤100, both inclusive); a group needs **≥2 rooftops** (1-rooftop
+"groups" are singles); Enterprise-A is 11–15 and Enterprise-B is 16+; MM sub-sectors (`2-5`/`6-10`)
+apply to both GFD and IGD; 50/50 type ties → IGD. Segment counts cover the **relevant base** (so they
+sum to Relevant TAM rooftops), not the known-domain base. A global **AOP Segment** filter
+(`FilterState.segment`, key `sg`) was added. Validated against live HubSpot (relevant US base):
+franchise single 51–100 cars = 1,989 (move to MM-Single); franchise single ≤50 = 3,382 and
+independent single ≤100 = 33,823 (stay SMB).
 
 ## Global Filters
 

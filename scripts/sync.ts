@@ -26,7 +26,7 @@ import { tagSegments, normalizeGroupName } from '../lib/aggregation/segment';
 import { aggregate } from '../lib/aggregation/aggregate';
 import { PODS, OWNER_TO_POD } from '../lib/pods';
 import type { SyncStatus, AggregatedData, MinifiedRecord } from '../types/dashboard';
-import { PROGRESS_UPDATE_INTERVAL, RELEVANT_WEBSITE_STATUS, UNITED_STATES_COUNTRY } from '../lib/constants';
+import { PROGRESS_UPDATE_INTERVAL, RELEVANT_WEBSITE_STATUS, UNITED_STATES_COUNTRY, MID_MARKET_ROOFTOP_MIN } from '../lib/constants';
 
 // Same relevant-market filter the dashboard aggregation uses: US + (Relevant or unknown website).
 const isRelevant = (r: MinifiedRecord) =>
@@ -158,9 +158,9 @@ async function main(): Promise<void> {
     // Assign each canonical MM group to its plurality pod, bucket by exact rooftop
     // count + type (GFD→franchise, IGD→independent). Sums reconcile with row totals.
     const mmRooftopPodSplit: Record<string, Array<{ franchise: number; independent: number }>> = {};
-    for (let n = 1; n <= MAX_RT; n++) mmRooftopPodSplit[String(n)] = mkPodSplit();
+    for (let n = MID_MARKET_ROOFTOP_MIN; n <= MAX_RT; n++) mmRooftopPodSplit[String(n)] = mkPodSplit();
     for (const g of dealerGroupRows) {
-      if (g.segment !== 'MM_GROUP' || g.rooftops == null || g.rooftops < 1 || g.rooftops > MAX_RT) continue;
+      if (g.segment !== 'MM_GROUP' || g.rooftops == null || g.rooftops < MID_MARKET_ROOFTOP_MIN || g.rooftops > MAX_RT) continue;
       const tally = groupPodTally.get(normalizeGroupName(g.name));
       if (!tally) continue; // no pod owns any rooftop → unattributed (UI derives it)
       let pluralityPod = -1, max = 0;
