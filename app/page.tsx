@@ -646,7 +646,15 @@ function CardFooter({
 // ── MM Rooftop-count table (individual counts 1-10) ──────────────────────────
 type DealerGroupFull = { name: string; segment: string; type: string; rooftops: number; rank: string; members: number }
 
-function MMRooftopCountTable({ groups }: { groups: DealerGroupFull[] }) {
+function MMRooftopCountTable({
+  groups,
+  podByBucket,
+  onPodRowClick,
+}: {
+  groups: DealerGroupFull[]
+  podByBucket: Record<string, Array<{ franchise: number; independent: number }>>
+  onPodRowClick: (bucketKey: string, label: string) => (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
+}) {
   const [openRow, setOpenRow] = useState<number | null>(null)
   const mmGroups = groups.filter((g) => g.segment === 'MM_GROUP')
   const maxRooftop = Math.max(...mmGroups.map((g) => g.rooftops), 0)
@@ -657,6 +665,9 @@ function MMRooftopCountTable({ groups }: { groups: DealerGroupFull[] }) {
   }
   const totGfd = buckets.reduce((s, b) => s + b.gfd, 0)
   const totIgd = buckets.reduce((s, b) => s + b.igd, 0)
+  // Band totals for the pod panel caption.
+  const le5Total = buckets.filter(b => b.n <= 5).reduce((s, b) => s + b.gfd + b.igd, 0)
+  const g6to10Total = buckets.filter(b => b.n > 5).reduce((s, b) => s + b.gfd + b.igd, 0)
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -708,20 +719,39 @@ function MMRooftopCountTable({ groups }: { groups: DealerGroupFull[] }) {
                   {isOpen && (
                     <tr className="border-t border-blue-100 bg-blue-50/40">
                       <td colSpan={5} className="px-4 py-3">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Groups with {label} ({b.groupNames.length})
-                        </p>
-                        <div className="max-h-52 columns-2 gap-4 space-y-0.5 overflow-y-auto text-xs">
-                          {b.groupNames.map((g) => (
-                            <div key={g.name} className="flex items-center justify-between gap-2 break-inside-avoid">
-                              <span className="truncate text-slate-700">{g.name}</span>
-                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${g.type === 'GFD' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{g.type}</span>
+                        <div className="grid gap-6 sm:grid-cols-2">
+                          {/* Pod split — band level (≤5 or 6-10) */}
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Pod ownership
+                              <span className="ml-1 font-normal normal-case text-slate-400">
+                                (all {b.n <= 5 ? '≤5' : '6-10'} rooftop groups · {b.n <= 5 ? le5Total : g6to10Total} total)
+                              </span>
+                            </p>
+                            <p className="mb-2 text-[10px] italic text-slate-400">
+                              Rooftop-member counts by pod for the whole {b.n <= 5 ? '≤5' : '6-10'} band — exact-count split unavailable without a re-sync.
+                            </p>
+                            <PodBucketBreakdown
+                              podCounts={podByBucket[b.n <= 5 ? 'MM_LE5' : 'MM_6_10'] ?? []}
+                              totalRooftops={b.n <= 5 ? le5Total : g6to10Total}
+                              onRowClick={onPodRowClick(b.n <= 5 ? 'MM_LE5' : 'MM_6_10', `MM – ${b.n <= 5 ? '≤5' : '6-10'} rooftop band`)}
+                            />
+                          </div>
+                          {/* Group names for this exact count */}
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Groups with exactly {label} ({b.groupNames.length})
+                            </p>
+                            <div className="max-h-52 space-y-0.5 overflow-y-auto text-xs">
+                              {b.groupNames.map((g) => (
+                                <div key={g.name} className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-slate-700">{g.name}</span>
+                                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${g.type === 'GFD' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{g.type}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          </div>
                         </div>
-                        <p className="mt-2 text-[10px] italic text-slate-400">
-                          Pod-level breakdown by exact rooftop count isn&apos;t available in the current sync (requires group-name matching on records). Use the Pod Breakdown toggle on the MM-Group ≤5 / 6–10 cards for band-level pod data.
-                        </p>
                       </td>
                     </tr>
                   )}
@@ -752,7 +782,7 @@ function SMBDeepDive({
   podCounts: Array<{ franchise: number; independent: number }>
   onPodRowClick?: (podIdx: number, type: 'Franchise' | 'Independent' | null) => void
 }) {
-  const [podPanel, setPodPanel] = useState<'gt50' | null>(null)
+  const [podPanel, setPodPanel] = useState<'gt50' | 'le50' | null>(null)
   const hasGt50 = !!smbGt50
 
   // Derive ≤50 bucket from totals minus >50.
@@ -831,13 +861,29 @@ function SMBDeepDive({
                     </td>
                   </tr>
                 )}
-                {/* ≤50 row — no pod panel (pod counts are not split by used-car band) */}
-                <tr className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">≤50 used cars</td>
+                {/* ≤50 row — same pod ownership data as >50 (no per-pod uc split) */}
+                <tr className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                    onClick={() => setPodPanel((p) => p === 'le50' ? null : 'le50')}>
+                  <td className="px-4 py-2 font-medium text-blue-700 hover:underline">
+                    ≤50 used cars {podPanel === 'le50' ? '▴' : '▾'}
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(frLe50)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(indLe50)}</td>
                   <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-950">{formatNumber(frLe50 + indLe50)}</td>
                 </tr>
+                {podPanel === 'le50' && (
+                  <tr className="border-t border-blue-100 bg-blue-50/40">
+                    <td colSpan={4} className="px-4 py-3 text-xs">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Pod breakdown — all SMB dealers owned by pod
+                      </p>
+                      <PodBucketBreakdown podCounts={podCounts} totalRooftops={cell.rooftops} onRowClick={onPodRowClick} />
+                      <p className="mt-1 text-[10px] italic text-slate-400">
+                        Shows total SMB ownership per pod (Fr/Ind). Per-pod ≤50 used-car split requires a future sync enhancement.
+                      </p>
+                    </td>
+                  </tr>
+                )}
                 <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
                   <td className="px-4 py-2">Total SMB</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(cell.franchise)}</td>
@@ -1530,7 +1576,11 @@ function DashboardContent() {
 
               {/* MM rooftop-count deep-dive table */}
               <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                <MMRooftopCountTable groups={(segmentation.groups ?? []) as DealerGroupFull[]} />
+                <MMRooftopCountTable
+                  groups={(segmentation.groups ?? []) as DealerGroupFull[]}
+                  podByBucket={seg.podByBucket}
+                  onPodRowClick={(bk, label) => (podIdx, type) => podBucketDrilldown(bk, label)(podIdx, type)}
+                />
                 <SMBDeepDive
                   cell={seg.M.SMB}
                   smbGt50={segmentation.smbGt50}
