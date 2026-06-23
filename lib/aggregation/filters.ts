@@ -48,6 +48,13 @@ export function applyFilters(
     filterOptions: data.filterOptions,
     // The dealer-group target list is canonical (sync-time); records can't rebuild
     // a group's true rooftop count under a filter, so carry it through unchanged.
-    segmentation: { ...result.segmentation, groups: data.segmentation.groups, smbGt50: data.segmentation.smbGt50 },
+    segmentation: {
+      ...result.segmentation,
+      groups: data.segmentation.groups,
+      smbGt50: data.segmentation.smbGt50,
+      smbPodGt50: data.segmentation.smbPodGt50,
+      smbPodLe50: data.segmentation.smbPodLe50,
+      mmRooftopPodSplit: data.segmentation.mmRooftopPodSplit,
+    },
   };
 }

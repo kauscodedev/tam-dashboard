@@ -74,8 +74,18 @@ export interface SegmentationData {
   enterpriseTiers: GroupRow[];
   /** Canonical dealer-group target list (computed at sync; preserved across filters). */
   groups: DealerGroupRow[];
-  /** SMB dealers with >50 used cars. Computed at sync before uc is dropped. Undefined on old blobs. */
+  /** SMB dealers with >50 used cars (aggregate). Computed at sync before uc is dropped. */
   smbGt50?: { franchise: number; independent: number; rooftops: number };
+  /** Per-pod SMB breakdown for >50 used cars. Index matches PODS order. */
+  smbPodGt50?: Array<{ franchise: number; independent: number }>;
+  /** Per-pod SMB breakdown for ≤50 used cars. Index matches PODS order. */
+  smbPodLe50?: Array<{ franchise: number; independent: number }>;
+  /**
+   * Per-rooftop-count pod breakdown for MM_GROUP records.
+   * Key = rooftop count (as string "1".."10"); value = array indexed by pod.
+   * Computed at sync before gn is dropped.
+   */
+  mmRooftopPodSplit?: Record<string, Array<{ franchise: number; independent: number }>>;
 }
 
 export interface GroupRow {

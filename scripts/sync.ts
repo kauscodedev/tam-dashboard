@@ -22,8 +22,9 @@ import { put } from '@vercel/blob';
 import { fetchMetadata } from '../lib/hubspot/fetchMetadata';
 import { fetchAllCompanies } from '../lib/hubspot/fetchAllCompanies';
 import { fetchDealerGroups } from '../lib/hubspot/fetchDealerGroups';
-import { tagSegments } from '../lib/aggregation/segment';
+import { tagSegments, normalizeGroupName } from '../lib/aggregation/segment';
 import { aggregate } from '../lib/aggregation/aggregate';
+import { PODS, OWNER_TO_POD } from '../lib/pods';
 import type { SyncStatus, AggregatedData } from '../types/dashboard';
 import { PROGRESS_UPDATE_INTERVAL } from '../lib/constants';
 
@@ -94,20 +95,57 @@ async function main(): Promise<void> {
     const dealerGroups = await fetchDealerGroups();
     console.log(`[Sync] Tagging segments using ${dealerGroups.length} dealer groups...`);
     const dealerGroupRows = tagSegments(allRecords, dealerGroups);
-    // Compute SMB >50 used-cars stat BEFORE dropping uc.
+    // ── Pre-drop computations (while uc and gn still exist on records) ─────────
+
+    // 1. SMB >50 / ≤50 aggregate + per-pod breakdown.
     const smbGt50 = { franchise: 0, independent: 0, rooftops: 0 };
+    const mkPodSplit = () => PODS.map(() => ({ franchise: 0, independent: 0 }));
+    const smbPodGt50 = mkPodSplit();
+    const smbPodLe50 = mkPodSplit();
+
+    // 2. MM rooftop-count pod breakdown (exact N per pod).
+    //    Build name→canonicalRooftops from the canonical group list.
+    const groupRooftopsMap = new Map<string, number>();
+    for (const g of dealerGroupRows) {
+      if (g.rooftops != null) groupRooftopsMap.set(normalizeGroupName(g.name), g.rooftops);
+    }
+    const MAX_RT = 10;
+    const mmRooftopPodSplit: Record<string, Array<{ franchise: number; independent: number }>> = {};
+    for (let n = 1; n <= MAX_RT; n++) mmRooftopPodSplit[String(n)] = mkPodSplit();
+
     for (const r of allRecords) {
+      // SMB used-car band split.
       if (r.sg === 'SMB' && r.uc != null) {
         const cars = Number(r.uc);
-        if (Number.isFinite(cars) && cars > 50) {
-          smbGt50.rooftops++;
-          if (r.td === 'Franchise') smbGt50.franchise++;
-          else if (r.td === 'Independent') smbGt50.independent++;
+        if (Number.isFinite(cars)) {
+          if (cars > 50) {
+            smbGt50.rooftops++;
+            if (r.td === 'Franchise') smbGt50.franchise++;
+            else if (r.td === 'Independent') smbGt50.independent++;
+          }
+          const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined;
+          if (podIdx !== undefined) {
+            const target = cars > 50 ? smbPodGt50[podIdx] : smbPodLe50[podIdx];
+            if (r.td === 'Franchise') target.franchise++;
+            else if (r.td === 'Independent') target.independent++;
+          }
+        }
+      }
+      // MM exact-rooftop-count pod split.
+      if (r.sg === 'MM_GROUP' && r.gn != null) {
+        const canonicalRt = groupRooftopsMap.get(normalizeGroupName(r.gn));
+        if (canonicalRt != null && canonicalRt >= 1 && canonicalRt <= MAX_RT) {
+          const podIdx = r.ow != null ? OWNER_TO_POD[r.ow] : undefined;
+          if (podIdx !== undefined) {
+            const bucket = mmRooftopPodSplit[String(canonicalRt)][podIdx];
+            if (r.td === 'Franchise') bucket.franchise++;
+            else if (r.td === 'Independent') bucket.independent++;
+          }
         }
       }
     }
 
-    // `uc` and `gn` only needed during tagging — drop from the stored payload.
+    // `uc` and `gn` only needed during tagging + pre-drop computation — drop now.
     for (const r of allRecords) {
       delete (r as Partial<typeof r>).uc;
       delete (r as Partial<typeof r>).gn;
@@ -119,6 +157,9 @@ async function main(): Promise<void> {
     // Attach the canonical group target list (computed once; not record-derived).
     aggregated.segmentation.groups = dealerGroupRows;
     aggregated.segmentation.smbGt50 = smbGt50;
+    aggregated.segmentation.smbPodGt50 = smbPodGt50;
+    aggregated.segmentation.smbPodLe50 = smbPodLe50;
+    aggregated.segmentation.mmRooftopPodSplit = mmRooftopPodSplit;
 
     const { summaries } = aggregated;
     console.log('\n[Sync] ── Aggregation summary ──────────────────────────');
