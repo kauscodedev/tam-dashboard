@@ -23,15 +23,16 @@ export const MARKET_SEGMENT_PROPERTY = 'market_segment';
 
 export type WriteMode = 'off' | 'dry-run' | 'write';
 
-/** Maps a baked segment tag (`sg`/`ss`) to the `market_segment` enum internal value. */
+/** Maps a baked segment tag (`sg`) to the `market_segment` enum internal value (v2). */
 export function marketSegmentValue(r: MinifiedRecord): string | null {
   switch (r.sg) {
     case 'SMB': return 'smb';
     case 'MM_SINGLE': return 'mm_single';
-    case 'MM_GROUP': return r.ss === '6-10' ? 'mm_group_6_10' : 'mm_group_2_5';
+    case 'MM_GROUP': return 'mm_group';
     case 'ENT_A': return 'enterprise_a';
     case 'ENT_B': return 'enterprise_b';
     case 'ENT_C': return 'enterprise_c';
+    case 'TOP_150': return 'top_150';
     case 'UNSIZED': return 'unsized';
     default: return null;
   }
@@ -41,11 +42,11 @@ export function marketSegmentValue(r: MinifiedRecord): string | null {
 export const MARKET_SEGMENT_LABELS: Record<string, string> = {
   smb: 'SMB',
   mm_single: 'Mid Market - Single',
-  mm_group_2_5: 'Mid Market - Group (2-5)',
-  mm_group_6_10: 'Mid Market - Group (6-10)',
-  enterprise_a: 'Enterprise A',
-  enterprise_b: 'Enterprise B',
-  enterprise_c: 'Enterprise C',
+  mm_group: 'Mid Market - Group (2-6)',
+  enterprise_a: 'Enterprise A (7-10)',
+  enterprise_b: 'Enterprise B (11-15)',
+  enterprise_c: 'Enterprise C (16+)',
+  top_150: 'Top 150',
   unsized: 'Unsized',
 };
 
@@ -70,8 +71,10 @@ export async function writeMarketSegments(
   if (opts.mode === 'off') return 0;
   const scope = opts.scope ?? 'relevant';
 
+  // Top-150 is region-independent: tag every Top-150 group member regardless of country
+  // or website status, even when scope is the (US) relevant base.
   const targets = records.filter(
-    (r) => r.hi && r.sg && (scope === 'all' || opts.isRelevant(r))
+    (r) => r.hi && r.sg && (scope === 'all' || r.sg === 'TOP_150' || opts.isRelevant(r))
   );
 
   // Distribution (sanity-check before any write).

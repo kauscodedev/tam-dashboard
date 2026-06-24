@@ -39,9 +39,12 @@ export const SMB_USED_CAR_MAX = 100;
 // canonical rooftop count is below this (i.e. 1) is functionally a single dealer and is
 // re-tagged as a single (sized by used cars) instead of MM_GROUP.
 export const MID_MARKET_ROOFTOP_MIN = 2;
-export const MID_MARKET_ROOFTOP_MAX = 10; // 2-10 rooftops => Mid Market group
-export const ENTERPRISE_A_ROOFTOP_MAX = 15; // 11-15 => Enterprise-A; 16+ => Enterprise-B
-// dealership_rank enum value that marks a Top-150 group => Enterprise-C.
+// Group rooftop bands (v2): MM-Group 2-6, Enterprise-A 7-10, Enterprise-B 11-15,
+// Enterprise-C 16+. A Top-150 ranked group overrides all of these into the Top-150 segment.
+export const MID_MARKET_ROOFTOP_MAX = 6; // 2-6 rooftops => Mid Market group
+export const ENTERPRISE_A_ROOFTOP_MAX = 10; // 7-10 => Enterprise-A
+export const ENTERPRISE_B_ROOFTOP_MAX = 15; // 11-15 => Enterprise-B; 16+ => Enterprise-C
+// dealership_rank enum value that marks a Top-150 group => Top-150 segment (region-independent).
 export const TOP_150_RANK = 'Top 150';
 
 export type HubSpotFieldKey = keyof typeof FIELD_MAP;

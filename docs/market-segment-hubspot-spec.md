@@ -19,12 +19,16 @@ label is display-only and can be edited freely):
 |---|---|---|
 | `smb` | SMB | Independent single dealer with ≤100 used cars |
 | `mm_single` | Mid Market - Single | Single that is Mid Market — **all franchise singles**, plus independent singles with >100 used cars (1 rooftop) |
-| `mm_group_2_5` | Mid Market - Group (2-5) | Dealer group with 2–5 rooftops |
-| `mm_group_6_10` | Mid Market - Group (6-10) | Dealer group with 6–10 rooftops |
-| `enterprise_a` | Enterprise A | Dealer group with 11–15 rooftops |
-| `enterprise_b` | Enterprise B | Dealer group with 16+ rooftops (not Top 150) |
-| `enterprise_c` | Enterprise C | Top 150 dealer group (`dealership_rank = "Top 150"`) |
+| `mm_group` | Mid Market - Group (2-6) | Dealer group with 2–6 rooftops |
+| `enterprise_a` | Enterprise A (7-10) | Dealer group with 7–10 rooftops |
+| `enterprise_b` | Enterprise B (11-15) | Dealer group with 11–15 rooftops |
+| `enterprise_c` | Enterprise C (16+) | Dealer group with 16+ rooftops (not Top 150) |
+| `top_150` | Top 150 | Top-150 ranked dealer group (`dealership_rank = "Top 150"`), counted across **all regions** |
 | `unsized` | Unsized | Single with no used-car count (incl. unsized franchise) — enrich to classify |
+
+> The earlier `mm_group_2_5` / `mm_group_6_10` options are deprecated (merged into `mm_group`); they
+> remain in the property only so HubSpot doesn't reject removing in-use values — archive them in the UI
+> once the re-tag has emptied them.
 
 ---
 
@@ -75,12 +79,12 @@ STEP 1 — Group or Single?
         → SINGLE (go to Step 3)
   # A "group" with only 1 rooftop (and not Top 150) is a single dealer.
 
-STEP 2 — GROUP, by canonical rooftop count:
-  IF group_is_top_150 = true        → Enterprise C      # overrides all
-  ELSE IF group_rooftop_count > 15  → Enterprise B
-  ELSE IF group_rooftop_count >= 11 → Enterprise A       # 11–15
-  ELSE IF group_rooftop_count >= 6  → Mid Market - Group (6-10)
-  ELSE                              → Mid Market - Group (2-5)   # 2–5
+STEP 2 — GROUP, by canonical rooftop count (v2 bands):
+  IF group_is_top_150 = true        → Top 150            # overrides all (all regions)
+  ELSE IF group_rooftop_count > 15  → Enterprise C       # 16+
+  ELSE IF group_rooftop_count >= 11 → Enterprise B       # 11–15
+  ELSE IF group_rooftop_count >= 7  → Enterprise A       # 7–10
+  ELSE                              → Mid Market - Group  # 2–6
 
 STEP 3 — SINGLE, by dealership type + used cars:
   IF number_of_used_cars is empty          → Unsized   # incl. unsized franchise
@@ -91,8 +95,13 @@ STEP 3 — SINGLE, by dealership type + used cars:
 ```
 
 Thresholds (from `lib/constants.ts`): `SMB_USED_CAR_MAX = 100` (independent/untyped only),
-`MID_MARKET_ROOFTOP_MIN = 2`, `MID_MARKET_ROOFTOP_MAX = 10`, `ENTERPRISE_A_ROOFTOP_MAX = 15`,
+`MID_MARKET_ROOFTOP_MIN = 2`, `MID_MARKET_ROOFTOP_MAX = 6` (MM-Group 2–6),
+`ENTERPRISE_A_ROOFTOP_MAX = 10` (Ent-A 7–10), `ENTERPRISE_B_ROOFTOP_MAX = 15` (Ent-B 11–15; 16+ → Ent-C),
 `TOP_150_RANK = "Top 150"`.
+
+**Top 150 spans all regions.** Unlike the other segments (US relevant base), the write-back tags every
+Top-150 group member regardless of country or website status, and the dashboard counts Top-150 across
+all regions (`segmentation.top150AllRegions`).
 
 **Franchise singles are always Mid Market** (never SMB), regardless of used-car count —
 franchise rooftops monetize differently. SMB is therefore independent-only (among singles).
@@ -117,23 +126,23 @@ present on the company. Practically, a workflow is the cleaner native option.
 ## 5. Recommended: tag from the dashboard sync (Approach A) — IMPLEMENTED
 
 The sync pipeline (`scripts/sync.ts` → `tagSegments`) already does the group-name join and
-computes the exact segment (`sg` tag, plus `ss` for the MM-group band) for every company,
-using the canonical Dealership Group Names rollup. So the write-back lives in the sync rather
-than re-implementing the group join as a workflow. Implemented in
-`lib/hubspot/writeMarketSegment.ts` and called (gated) at the end of `scripts/sync.ts`.
+computes the exact segment (`sg` tag) for every company, using the canonical Dealership Group
+Names rollup. So the write-back lives in the sync rather than re-implementing the group join as a
+workflow. Implemented in `lib/hubspot/writeMarketSegment.ts` and called (gated) at the end of
+`scripts/sync.ts`. Top-150 members are tagged regardless of region (write-back scope exception).
 
-`sg`/`ss` → `market_segment` internal value (see `marketSegmentValue()`):
+`sg` → `market_segment` internal value (see `marketSegmentValue()`):
 
-| `sg` | `ss` | `market_segment` value |
-|---|---|---|
-| `SMB` | — | `smb` |
-| `MM_SINGLE` | — | `mm_single` |
-| `MM_GROUP` | `2-5` | `mm_group_2_5` |
-| `MM_GROUP` | `6-10` | `mm_group_6_10` |
-| `ENT_A` | — | `enterprise_a` |
-| `ENT_B` | — | `enterprise_b` |
-| `ENT_C` | — | `enterprise_c` |
-| `UNSIZED` | — | `unsized` |
+| `sg` | `market_segment` value |
+|---|---|
+| `SMB` | `smb` |
+| `MM_SINGLE` | `mm_single` |
+| `MM_GROUP` | `mm_group` |
+| `ENT_A` | `enterprise_a` |
+| `ENT_B` | `enterprise_b` |
+| `ENT_C` | `enterprise_c` |
+| `TOP_150` | `top_150` |
+| `UNSIZED` | `unsized` |
 
 ### One-time setup
 1. **Create the property.** `market_segment` single-select enum on Company, with the option

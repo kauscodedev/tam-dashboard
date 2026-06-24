@@ -40,7 +40,7 @@ const ZERO_METRIC: CountMetric = { rooftops: 0, companies: 0 }
 function marketOf(sg: string | null): Market | undefined {
   return sg === 'SMB' ? 'smb'
     : sg === 'MM_SINGLE' || sg === 'MM_GROUP' ? 'mm'
-      : sg === 'ENT_A' || sg === 'ENT_B' || sg === 'ENT_C' ? 'ent'
+      : sg === 'ENT_A' || sg === 'ENT_B' || sg === 'ENT_C' || sg === 'TOP_150' ? 'ent'
         : sg === 'UNSIZED' ? 'unsized' : undefined
 }
 const MARKET_LABEL: Record<Market, string> = { smb: 'SMB', mm: 'Mid Market', ent: 'Enterprise', unsized: 'Unsized' }
@@ -671,7 +671,7 @@ type DealerGroupFull = { name: string; segment: string; type: string; rooftops: 
 function MMRooftopCountTable({
   groups,
   mmRooftopPodSplit,
-  range = [2, 10],
+  range = [2, 6],
   compact = false,
 }: {
   groups: DealerGroupFull[]
@@ -1109,16 +1109,17 @@ function DashboardContent() {
     type Cell = { groups: number; gfdGroups: number; igdGroups: number; rooftops: number; franchise: number; independent: number }
     const cell = (): Cell => ({ groups: 0, gfdGroups: 0, igdGroups: 0, rooftops: 0, franchise: 0, independent: 0 })
     const M = {
-      SMB: cell(), MM_SINGLE: cell(), MM_LE5: cell(), MM_6_10: cell(),
-      ENT_A: cell(), ENT_B: cell(), ENT_C: cell(), UNSIZED: cell(),
+      SMB: cell(), MM_SINGLE: cell(), MM_GROUP: cell(),
+      ENT_A: cell(), ENT_B: cell(), ENT_C: cell(), TOP_150: cell(), UNSIZED: cell(),
     }
     type Bucket = keyof typeof M
-    const bucketOf = (sg: string | null, ss: string | null): Bucket | undefined =>
+    const bucketOf = (sg: string | null): Bucket | undefined =>
       sg === 'SMB' ? 'SMB'
         : sg === 'MM_SINGLE' ? 'MM_SINGLE'
-          : sg === 'MM_GROUP' ? ((ss === '6-10' || ss === '7-10') ? 'MM_6_10' : 'MM_LE5')
+          : sg === 'MM_GROUP' ? 'MM_GROUP'
             : sg === 'ENT_A' ? 'ENT_A' : sg === 'ENT_B' ? 'ENT_B' : sg === 'ENT_C' ? 'ENT_C'
-              : sg === 'UNSIZED' ? 'UNSIZED' : undefined
+              : sg === 'TOP_150' ? 'TOP_150'
+                : sg === 'UNSIZED' ? 'UNSIZED' : undefined
 
     const mkMarket = () => ({ franchise: 0, independent: 0 })
     type PodStatInternal = PodStat & { _companySet: Set<string> }
@@ -1128,7 +1129,7 @@ function DashboardContent() {
       _companySet: new Set(),
     }))
     // Per-pod breakdown for each bucket.
-    const BUCKET_KEYS = ['SMB', 'MM_SINGLE', 'MM_LE5', 'MM_6_10', 'ENT_A', 'ENT_B', 'ENT_C'] as const
+    const BUCKET_KEYS = ['SMB', 'MM_SINGLE', 'MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'TOP_150'] as const
     type BucketKey = typeof BUCKET_KEYS[number]
     const podByBucket: Record<BucketKey, Array<{ franchise: number; independent: number }>> =
       Object.fromEntries(BUCKET_KEYS.map((k) => [k, PODS.map(() => mkMarket())])) as Record<BucketKey, Array<{ franchise: number; independent: number }>>
@@ -1136,11 +1137,11 @@ function DashboardContent() {
     type StageEntry = { franchise: number; independent: number }
     type StageBucket = Record<string, StageEntry>
     const stageByBucket: Record<BucketKey, StageBucket> = {
-      SMB: {}, MM_SINGLE: {}, MM_LE5: {}, MM_6_10: {}, ENT_A: {}, ENT_B: {}, ENT_C: {},
+      SMB: {}, MM_SINGLE: {}, MM_GROUP: {}, ENT_A: {}, ENT_B: {}, ENT_C: {}, TOP_150: {},
     }
 
     for (const r of filteredData.relevantRecords) {
-      const bk = bucketOf(r.sg, r.ss)
+      const bk = bucketOf(r.sg)
       if (bk) {
         const c = M[bk]
         c.rooftops++
@@ -1182,17 +1183,14 @@ function DashboardContent() {
     // Group counts + GFD/IGD split — canonical from dealer-group list.
     for (const g of filteredData.segmentation.groups ?? []) {
       const isFr = g.type === 'GFD'
-      if (g.segment === 'MM_GROUP') {
-        const target = g.rooftops <= 5 ? M.MM_LE5 : M.MM_6_10
-        target.groups++
-        if (isFr) target.gfdGroups++; else target.igdGroups++
-      } else if (g.segment === 'ENT_A') {
-        M.ENT_A.groups++; if (isFr) M.ENT_A.gfdGroups++; else M.ENT_A.igdGroups++
-      } else if (g.segment === 'ENT_B') {
-        M.ENT_B.groups++; if (isFr) M.ENT_B.gfdGroups++; else M.ENT_B.igdGroups++
-      } else if (g.segment === 'ENT_C') {
-        M.ENT_C.groups++; if (isFr) M.ENT_C.gfdGroups++; else M.ENT_C.igdGroups++
-      }
+      const tgt =
+        g.segment === 'MM_GROUP' ? M.MM_GROUP
+          : g.segment === 'ENT_A' ? M.ENT_A
+            : g.segment === 'ENT_B' ? M.ENT_B
+              : g.segment === 'ENT_C' ? M.ENT_C
+                : g.segment === 'TOP_150' ? M.TOP_150
+                  : null
+      if (tgt) { tgt.groups++; if (isFr) tgt.gfdGroups++; else tgt.igdGroups++ }
     }
 
     const add = (...cs: Cell[]): Cell => ({
@@ -1203,7 +1201,7 @@ function DashboardContent() {
       franchise:  cs.reduce((s, c) => s + c.franchise,  0),
       independent:cs.reduce((s, c) => s + c.independent,0),
     })
-    const mmSub = add(M.MM_SINGLE, M.MM_LE5, M.MM_6_10)
+    const mmSub = add(M.MM_SINGLE, M.MM_GROUP)
     const entSub = add(M.ENT_A, M.ENT_B, M.ENT_C)
     const row = (label: string, c: Cell, opts: { showGroups: boolean; kind?: MatrixRow['kind']; indent?: boolean }): MatrixRow =>
       ({ label, groups: c.groups, rooftops: c.rooftops, franchise: c.franchise, independent: c.independent, showGroups: opts.showGroups, kind: opts.kind ?? 'segment', indent: opts.indent })
@@ -1211,14 +1209,14 @@ function DashboardContent() {
       row('SMB — independent single ≤100 cars', M.SMB, { showGroups: false }),
       row('Mid Market', mmSub, { showGroups: true, kind: 'subtotal' }),
       row('Single · 1 rooftop (all Franchise + Ind >100 cars)', M.MM_SINGLE, { showGroups: false, indent: true }),
-      row('Group · 2–5 rooftops', M.MM_LE5, { showGroups: true, indent: true }),
-      row('Group · 6–10 rooftops', M.MM_6_10, { showGroups: true, indent: true }),
+      row('Group · 2–6 rooftops', M.MM_GROUP, { showGroups: true, indent: true }),
       row('Enterprise', entSub, { showGroups: true, kind: 'subtotal' }),
-      row('Enterprise-A · 11–15 rooftops', M.ENT_A, { showGroups: true, indent: true }),
-      row('Enterprise-B · 16+ rooftops', M.ENT_B, { showGroups: true, indent: true }),
-      row('Enterprise-C · Top 150', M.ENT_C, { showGroups: true, indent: true }),
+      row('Enterprise-A · 7–10 rooftops', M.ENT_A, { showGroups: true, indent: true }),
+      row('Enterprise-B · 11–15 rooftops', M.ENT_B, { showGroups: true, indent: true }),
+      row('Enterprise-C · 16+ rooftops', M.ENT_C, { showGroups: true, indent: true }),
+      row('Top 150 · US base (see card for all regions)', M.TOP_150, { showGroups: true }),
       row('Unsized — no car data', M.UNSIZED, { showGroups: false }),
-      row('Total classified', add(M.SMB, mmSub, entSub), { showGroups: true, kind: 'total' }),
+      row('Total classified', add(M.SMB, mmSub, entSub, M.TOP_150), { showGroups: true, kind: 'total' }),
     ]
     // Aggregate per-pod for the two "Total" cards.
     const podByBucketAgg = (keys: BucketKey[]) =>
@@ -1226,7 +1224,7 @@ function DashboardContent() {
         franchise: keys.reduce((s, k) => s + podByBucket[k][i].franchise, 0),
         independent: keys.reduce((s, k) => s + podByBucket[k][i].independent, 0),
       }))
-    const podMM_ALL = podByBucketAgg(['MM_SINGLE', 'MM_LE5', 'MM_6_10'])
+    const podMM_ALL = podByBucketAgg(['MM_SINGLE', 'MM_GROUP'])
     const podENT_ALL = podByBucketAgg(['ENT_A', 'ENT_B', 'ENT_C'])
 
     // Aggregate stage maps for MM_ALL and ENT_ALL.
@@ -1240,7 +1238,7 @@ function DashboardContent() {
       }
       return out
     }
-    const stageMM_ALL = mergeStages(['MM_SINGLE', 'MM_LE5', 'MM_6_10'])
+    const stageMM_ALL = mergeStages(['MM_SINGLE', 'MM_GROUP'])
     const stageENT_ALL = mergeStages(['ENT_A', 'ENT_B', 'ENT_C'])
 
     return { M, rows, podStats, podByBucket, podMM_ALL, podENT_ALL, stageByBucket, stageMM_ALL, stageENT_ALL, mmSub, entSub }
@@ -1279,6 +1277,8 @@ function DashboardContent() {
 
   const { summaries, breakdowns, stateTeamMatrix, segmentation } = filteredData
   const relevantTotal = summaries.relevantTAM.rooftops
+  // Top-150 spans all regions (computed at sync, region-independent). Fallback for old blobs.
+  const t150 = segmentation.top150AllRegions ?? { rooftops: 0, companies: 0, franchise: 0, independent: 0 }
   const lastSynced = filteredData.fetchedAt
     ? new Date(filteredData.fetchedAt).toLocaleString()
     : 'Unknown'
@@ -1344,13 +1344,13 @@ function DashboardContent() {
   const BUCKET_PRED: Record<string, BucketPred> = {
     SMB:       (r) => r.sg === 'SMB',
     MM_SINGLE: (r) => r.sg === 'MM_SINGLE',
-    MM_LE5:    (r) => r.sg === 'MM_GROUP' && r.ss !== '6-10',
-    MM_6_10:   (r) => r.sg === 'MM_GROUP' && r.ss === '6-10',
+    MM_GROUP:  (r) => r.sg === 'MM_GROUP',
     MM_ALL:    (r) => r.sg === 'MM_SINGLE' || r.sg === 'MM_GROUP',
     ENT_A:     (r) => r.sg === 'ENT_A',
     ENT_B:     (r) => r.sg === 'ENT_B',
     ENT_C:     (r) => r.sg === 'ENT_C',
     ENT_ALL:   (r) => r.sg === 'ENT_A' || r.sg === 'ENT_B' || r.sg === 'ENT_C',
+    TOP_150:   (r) => r.sg === 'TOP_150',
   }
   const podBucketDrilldown = (bucketKey: string, title: string) =>
     (podIdx: number, type: 'Franchise' | 'Independent' | null) => {
@@ -1510,21 +1510,21 @@ function DashboardContent() {
             </div>
           ) : (
             <>
-              {/* Row 1 — Mid Market: Total MM + Single + Group 2–5 + Group 6-10 */}
+              {/* Row 1 — Mid Market: Total + Single + Group (2-6) */}
               <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <MetricCard
                   title="Mid Market — Total"
                   metric={ZERO_METRIC}
-                  accounts={seg.M.MM_SINGLE.rooftops + seg.M.MM_LE5.groups + seg.M.MM_6_10.groups}
+                  accounts={seg.M.MM_SINGLE.rooftops + seg.M.MM_GROUP.groups}
                   accountsUnit=""
-                  subtitle={`${formatNumber(seg.M.MM_SINGLE.rooftops)} single + ${formatNumber(seg.M.MM_LE5.groups + seg.M.MM_6_10.groups)} groups`}
+                  subtitle={`${formatNumber(seg.mmSub.rooftops)} rooftops · ${formatNumber(seg.M.MM_SINGLE.rooftops)} single + ${formatNumber(seg.M.MM_GROUP.groups)} groups`}
                   rows={[
-                    { label: 'Single dealers', franchise: seg.M.MM_SINGLE.franchise, independent: seg.M.MM_SINGLE.independent },
-                    { label: 'Groups', franchise: seg.M.MM_LE5.gfdGroups + seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_LE5.igdGroups + seg.M.MM_6_10.igdGroups },
-                    { label: 'Groups · 2–5 rooftops', franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups, indent: true },
-                    { label: 'Groups · 6–10 rooftops', franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups, indent: true },
+                    { label: 'Total rooftops', franchise: seg.mmSub.franchise, independent: seg.mmSub.independent },
+                    { label: 'Single rooftops', franchise: seg.M.MM_SINGLE.franchise, independent: seg.M.MM_SINGLE.independent, indent: true },
+                    { label: 'Group rooftops (2–6)', franchise: seg.M.MM_GROUP.franchise, independent: seg.M.MM_GROUP.independent, indent: true },
+                    { label: 'Groups (2–6)', franchise: seg.M.MM_GROUP.gfdGroups, independent: seg.M.MM_GROUP.igdGroups },
                   ]}
-                  helper="All franchise singles + independent singles >100 cars + dealer groups (2–10 rooftops). Groups with 11+ rooftops are Enterprise."
+                  helper="All franchise singles + independent singles >100 cars + dealer groups (2–6 rooftops). Groups with 7+ rooftops are Enterprise."
                   footer={<CardFooter podCounts={seg.podMM_ALL} totalRooftops={seg.mmSub.rooftops} stageMap={seg.stageMM_ALL} onPodRowClick={podBucketDrilldown('MM_ALL', 'Mid Market — Total')} />}
                 />
                 <MetricCard
@@ -1536,28 +1536,18 @@ function DashboardContent() {
                   footer={<CardFooter podCounts={seg.podByBucket.MM_SINGLE} totalRooftops={seg.M.MM_SINGLE.rooftops} stageMap={seg.stageByBucket.MM_SINGLE} onPodRowClick={podBucketDrilldown('MM_SINGLE', 'MM — Single')} />}
                 />
                 <MetricCard
-                  title="Mid Market — Group 2–5"
+                  title="Mid Market — Group (2–6)"
                   metric={ZERO_METRIC}
-                  accounts={seg.M.MM_LE5.groups}
-                  split={seg.M.MM_LE5}
-                  groupSplit={{ franchise: seg.M.MM_LE5.gfdGroups, independent: seg.M.MM_LE5.igdGroups }}
-                  helper="Dealer groups with 2–5 rooftops."
-                  footer={<CardFooter podCounts={seg.podByBucket.MM_LE5} totalRooftops={seg.M.MM_LE5.rooftops} stageMap={seg.stageByBucket.MM_LE5} onPodRowClick={podBucketDrilldown('MM_LE5', 'MM — Group 2–5')}
-                    rooftopPanel={<MMRooftopCountTable groups={(segmentation.groups ?? []) as DealerGroupFull[]} mmRooftopPodSplit={segmentation.mmRooftopPodSplit} range={[2, 5]} compact />} />}
-                />
-                <MetricCard
-                  title="Mid Market — Group 6–10"
-                  metric={ZERO_METRIC}
-                  accounts={seg.M.MM_6_10.groups}
-                  split={seg.M.MM_6_10}
-                  groupSplit={{ franchise: seg.M.MM_6_10.gfdGroups, independent: seg.M.MM_6_10.igdGroups }}
-                  helper="Dealer groups with 6–10 rooftops."
-                  footer={<CardFooter podCounts={seg.podByBucket.MM_6_10} totalRooftops={seg.M.MM_6_10.rooftops} stageMap={seg.stageByBucket.MM_6_10} onPodRowClick={podBucketDrilldown('MM_6_10', 'MM — Group 6–10')}
-                    rooftopPanel={<MMRooftopCountTable groups={(segmentation.groups ?? []) as DealerGroupFull[]} mmRooftopPodSplit={segmentation.mmRooftopPodSplit} range={[6, 10]} compact />} />}
+                  accounts={seg.M.MM_GROUP.groups}
+                  split={seg.M.MM_GROUP}
+                  groupSplit={{ franchise: seg.M.MM_GROUP.gfdGroups, independent: seg.M.MM_GROUP.igdGroups }}
+                  helper="Dealer groups with 2–6 rooftops."
+                  footer={<CardFooter podCounts={seg.podByBucket.MM_GROUP} totalRooftops={seg.M.MM_GROUP.rooftops} stageMap={seg.stageByBucket.MM_GROUP} onPodRowClick={podBucketDrilldown('MM_GROUP', 'MM — Group (2–6)')}
+                    rooftopPanel={<MMRooftopCountTable groups={(segmentation.groups ?? []) as DealerGroupFull[]} mmRooftopPodSplit={segmentation.mmRooftopPodSplit} range={[2, 6]} compact />} />}
                 />
               </div>
 
-              {/* Row 2 — Enterprise: Total Enterprise + A + B + C */}
+              {/* Row 2 — Enterprise: Total + A (7-10) + B (11-15) + C (16+) */}
               <div className="mt-4 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <MetricCard
                   title="Enterprise — Total"
@@ -1566,7 +1556,7 @@ function DashboardContent() {
                   accountsUnit="groups"
                   split={seg.entSub}
                   groupSplit={{ franchise: seg.entSub.gfdGroups, independent: seg.entSub.igdGroups }}
-                  helper="All Enterprise: groups with 11+ rooftops or Top-150 rank."
+                  helper="Groups with 7+ rooftops (Enterprise A/B/C). Top-150 groups are shown separately."
                   footer={<CardFooter podCounts={seg.podENT_ALL} totalRooftops={seg.entSub.rooftops} stageMap={seg.stageENT_ALL} onPodRowClick={podBucketDrilldown('ENT_ALL', 'Enterprise — Total')} />}
                 />
                 <MetricCard
@@ -1575,7 +1565,7 @@ function DashboardContent() {
                   accounts={seg.M.ENT_A.groups}
                   split={seg.M.ENT_A}
                   groupSplit={{ franchise: seg.M.ENT_A.gfdGroups, independent: seg.M.ENT_A.igdGroups }}
-                  helper="Groups with 11–15 rooftops."
+                  helper="Groups with 7–10 rooftops."
                   footer={<CardFooter podCounts={seg.podByBucket.ENT_A} totalRooftops={seg.M.ENT_A.rooftops} stageMap={seg.stageByBucket.ENT_A} onPodRowClick={podBucketDrilldown('ENT_A', 'Enterprise-A')} />}
                 />
                 <MetricCard
@@ -1584,7 +1574,7 @@ function DashboardContent() {
                   accounts={seg.M.ENT_B.groups}
                   split={seg.M.ENT_B}
                   groupSplit={{ franchise: seg.M.ENT_B.gfdGroups, independent: seg.M.ENT_B.igdGroups }}
-                  helper="Groups with 16+ rooftops, excluding Top 150."
+                  helper="Groups with 11–15 rooftops."
                   footer={<CardFooter podCounts={seg.podByBucket.ENT_B} totalRooftops={seg.M.ENT_B.rooftops} stageMap={seg.stageByBucket.ENT_B} onPodRowClick={podBucketDrilldown('ENT_B', 'Enterprise-B')} />}
                 />
                 <MetricCard
@@ -1593,14 +1583,25 @@ function DashboardContent() {
                   accounts={seg.M.ENT_C.groups}
                   split={seg.M.ENT_C}
                   groupSplit={{ franchise: seg.M.ENT_C.gfdGroups, independent: seg.M.ENT_C.igdGroups }}
-                  tone="success"
-                  helper="Top 150 dealer groups (Dealership Rank = Top 150), region-independent."
+                  helper="Groups with 16+ rooftops (excluding Top 150)."
                   footer={<CardFooter podCounts={seg.podByBucket.ENT_C} totalRooftops={seg.M.ENT_C.rooftops} stageMap={seg.stageByBucket.ENT_C} onPodRowClick={podBucketDrilldown('ENT_C', 'Enterprise-C')} />}
                 />
               </div>
 
-              {/* Row 3 — SMB + Unsized */}
+              {/* Row 3 — Top 150 (all regions) + SMB + Unsized */}
               <div className="mt-4 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="Top 150"
+                  metric={ZERO_METRIC}
+                  accounts={seg.M.TOP_150.groups}
+                  accountsUnit="groups"
+                  split={{ rooftops: t150.rooftops, franchise: t150.franchise, independent: t150.independent }}
+                  groupSplit={{ franchise: seg.M.TOP_150.gfdGroups, independent: seg.M.TOP_150.igdGroups }}
+                  tone="success"
+                  subtitle={`${formatNumber(t150.rooftops)} rooftops · all regions`}
+                  helper="Top-150 strategic dealer groups (Dealership Rank = Top 150). Counted across ALL regions, any website status; rooftop split is global."
+                  footer={<CardFooter podCounts={seg.podByBucket.TOP_150} totalRooftops={seg.M.TOP_150.rooftops} stageMap={seg.stageByBucket.TOP_150} onPodRowClick={podBucketDrilldown('TOP_150', 'Top 150')} />}
+                />
                 <MetricCard
                   title="SMB"
                   metric={segmentation.bySegment.SMB}

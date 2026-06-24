@@ -4,7 +4,6 @@ import type {
   DealerGroupRow,
   SegmentCode,
   GroupType,
-  SubSector,
   CountMetric,
   GroupRow,
   SegmentationData,
@@ -14,6 +13,7 @@ import {
   MID_MARKET_ROOFTOP_MIN,
   MID_MARKET_ROOFTOP_MAX,
   ENTERPRISE_A_ROOFTOP_MAX,
+  ENTERPRISE_B_ROOFTOP_MAX,
   TOP_150_RANK,
 } from '../constants';
 
@@ -31,29 +31,30 @@ function parseUsedCars(value: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function subSectorFor(rooftops: number): SubSector {
-  return rooftops <= 5 ? '2-5' : '6-10';
-}
-
-/** A group's segment from its canonical rooftop count + Top-150 rank (region-independent). */
+/**
+ * A group's segment from its canonical rooftop count + Top-150 rank (v2 bands).
+ * Top-150 rank overrides all rooftop bands into its own region-independent segment.
+ */
 function segmentForGroup(rooftops: number, isTop150: boolean): SegmentCode {
-  if (isTop150) return 'ENT_C';
-  if (rooftops > ENTERPRISE_A_ROOFTOP_MAX) return 'ENT_B';
-  if (rooftops > MID_MARKET_ROOFTOP_MAX) return 'ENT_A';
-  return 'MM_GROUP';
+  if (isTop150) return 'TOP_150';
+  if (rooftops > ENTERPRISE_B_ROOFTOP_MAX) return 'ENT_C'; // 16+
+  if (rooftops > ENTERPRISE_A_ROOFTOP_MAX) return 'ENT_B'; // 11-15
+  if (rooftops > MID_MARKET_ROOFTOP_MAX) return 'ENT_A';   // 7-10
+  return 'MM_GROUP';                                       // 2-6
 }
 
-type GroupVerdict = { sg: SegmentCode; gt: GroupType; ss: SubSector | null; rooftops: number };
+type GroupVerdict = { sg: SegmentCode; gt: GroupType; rooftops: number };
 
 // ─── Tagging (sync time) ────────────────────────────────────────────────────
 
 /**
- * Mutates each record in place, baking the AOP segment tags `sg`/`gt`/`ss`.
+ * Mutates each record in place, baking the AOP segment tags `sg`/`gt`.
  *
  * A record is a GROUP only if it has a `gn` AND its group's canonical rooftop count is
  * >= MID_MARKET_ROOFTOP_MIN (2), or the group is Top-150. Groups are sized by canonical
  * rooftops (group-object `rooftops` rollup, falling back to member-record count when
- * missing/zero) and the majority dealership type across members. Top-150 groups => Ent-C.
+ * missing/zero): 2-6 => MM_GROUP, 7-10 => ENT_A, 11-15 => ENT_B, 16+ => ENT_C. A Top-150
+ * ranked group overrides all bands into the TOP_150 segment.
  *
  * Everything else is a SINGLE — no group name, OR a 1-rooftop "group" (functionally a
  * single dealer). Franchise singles are ALWAYS MM_SINGLE (never SMB). Independent/untyped
@@ -100,7 +101,7 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
     if (rooftops < MID_MARKET_ROOFTOP_MIN && !isTop150) continue;
     const gt: GroupType = t.fr > t.ind ? 'GFD' : 'IGD'; // 50/50 tie -> IGD
     const sg = segmentForGroup(rooftops, isTop150);
-    verdict.set(key, { sg, gt, ss: sg === 'MM_GROUP' ? subSectorFor(rooftops) : null, rooftops });
+    verdict.set(key, { sg, gt, rooftops });
   }
 
   // 4. Bake tags onto every record.
@@ -111,7 +112,6 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
       if (v) {
         r.sg = v.sg;
         r.gt = v.gt;
-        r.ss = v.ss;
         continue;
       }
     }
@@ -129,7 +129,6 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
       r.sg = cars <= SMB_USED_CAR_MAX ? 'SMB' : 'MM_SINGLE';
     }
     r.gt = null;
-    r.ss = null;
   }
 
   // 5. Canonical dealer-group target list. Seeded from the group OBJECT so the
@@ -170,7 +169,7 @@ export function tagSegments(records: MinifiedRecord[], groups: DealerGroup[]): D
 
 // ─── Summarizing (sync + filter time) ──────────────────────────────────────────
 
-const SEGMENT_CODES: SegmentCode[] = ['SMB', 'MM_SINGLE', 'MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'UNSIZED'];
+const SEGMENT_CODES: SegmentCode[] = ['SMB', 'MM_SINGLE', 'MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'TOP_150', 'UNSIZED'];
 
 class Counter {
   rooftops = 0;
@@ -187,28 +186,19 @@ class Counter {
   }
 }
 
-const SUBSECTORS: SubSector[] = ['2-5', '6-10'];
-const SUBSECTOR_LABEL: Record<SubSector, string> = {
-  '2-5': '2-5 rooftops',
-  '6-10': '6-10 rooftops',
-};
-
 /**
- * Builds the segmentation report over an already-relevant record set. Reads the
- * baked `sg`/`gt`/`ss` tags, so it works identically at sync time and on every
- * client-side filter re-aggregation.
+ * Builds the segmentation report over an already-relevant record set. Reads the baked
+ * `sg`/`gt` tags, so it works identically at sync time and on every client-side filter.
+ * Note: the Top-150 segment here is relevant-base only; the all-regions Top-150 metric is
+ * computed at sync and carried separately on `segmentation.top150AllRegions`.
  */
 export function buildSegmentation(records: MinifiedRecord[]): SegmentationData {
   const bySegment = new Map<SegmentCode, Counter>();
   for (const code of SEGMENT_CODES) bySegment.set(code, new Counter());
   const mmGroupByType: Record<GroupType, Counter> = { GFD: new Counter(), IGD: new Counter() };
-  const mmSub: Record<GroupType, Map<SubSector, Counter>> = {
-    GFD: new Map(SUBSECTORS.map((s) => [s, new Counter()])),
-    IGD: new Map(SUBSECTORS.map((s) => [s, new Counter()])),
-  };
 
   // Distinct dealer groups per (group) segment for the account-level view.
-  const groupSegments: SegmentCode[] = ['MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C'];
+  const groupSegments: SegmentCode[] = ['MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'TOP_150'];
   const distinctGroups = new Map<SegmentCode, Set<string>>(
     groupSegments.map((s) => [s, new Set<string>()])
   );
@@ -218,10 +208,7 @@ export function buildSegmentation(records: MinifiedRecord[]): SegmentationData {
     if (!r.sg) continue;
     available = true;
     bySegment.get(r.sg)?.add(r);
-    if (r.sg === 'MM_GROUP' && r.gt) {
-      mmGroupByType[r.gt].add(r);
-      if (r.ss) mmSub[r.gt].get(r.ss)?.add(r);
-    }
+    if (r.sg === 'MM_GROUP' && r.gt) mmGroupByType[r.gt].add(r);
     const groupSet = distinctGroups.get(r.sg);
     if (groupSet && r.gn) groupSet.add(normalizeGroupName(r.gn));
   }
@@ -235,17 +222,13 @@ export function buildSegmentation(records: MinifiedRecord[]): SegmentationData {
   ) as Record<SegmentCode, number>;
 
   const segMetric = (code: SegmentCode) => bySegment.get(code)!.metric();
-  const subRows = (gt: GroupType): GroupRow[] =>
-    SUBSECTORS.map((s) => {
-      const m = mmSub[gt].get(s)!.metric();
-      return { key: s, label: SUBSECTOR_LABEL[s], rooftops: m.rooftops, companies: m.companies };
-    }).filter((row) => row.rooftops > 0);
 
   const enterpriseTiers: GroupRow[] = (
     [
-      ['ENT_A', 'Enterprise-A (11-15 rooftops)'],
-      ['ENT_B', 'Enterprise-B (16+ rooftops)'],
-      ['ENT_C', 'Enterprise-C (Top 150)'],
+      ['ENT_A', 'Enterprise-A (7-10 rooftops)'],
+      ['ENT_B', 'Enterprise-B (11-15 rooftops)'],
+      ['ENT_C', 'Enterprise-C (16+ rooftops)'],
+      ['TOP_150', 'Top 150'],
     ] as [SegmentCode, string][]
   ).map(([code, label]) => {
     const m = segMetric(code);
@@ -261,7 +244,6 @@ export function buildSegmentation(records: MinifiedRecord[]): SegmentationData {
     bySegment: bySegmentOut,
     accounts,
     mmGroupByType: { GFD: mmGroupByType.GFD.metric(), IGD: mmGroupByType.IGD.metric() },
-    mmSubSectors: { GFD: subRows('GFD'), IGD: subRows('IGD') },
     enterpriseTiers,
     groups: [], // canonical list is attached at sync time and preserved across filters
   };

@@ -26,7 +26,7 @@ import { tagSegments, normalizeGroupName } from '../lib/aggregation/segment';
 import { aggregate } from '../lib/aggregation/aggregate';
 import { PODS, OWNER_TO_POD } from '../lib/pods';
 import type { SyncStatus, AggregatedData, MinifiedRecord } from '../types/dashboard';
-import { PROGRESS_UPDATE_INTERVAL, RELEVANT_WEBSITE_STATUS, UNITED_STATES_COUNTRY, MID_MARKET_ROOFTOP_MIN } from '../lib/constants';
+import { PROGRESS_UPDATE_INTERVAL, RELEVANT_WEBSITE_STATUS, UNITED_STATES_COUNTRY, MID_MARKET_ROOFTOP_MIN, MID_MARKET_ROOFTOP_MAX } from '../lib/constants';
 import { writeMarketSegments, type WriteMode } from '../lib/hubspot/writeMarketSegment';
 
 // Same relevant-market filter the dashboard aggregation uses: US + (Relevant or unknown website).
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
 
     // 2. MM rooftop-count pod breakdown — counts GROUPS per pod (by plurality of
     //    rooftop ownership) so the numbers reconcile with the group-count rows.
-    const MAX_RT = 10;
+    const MAX_RT = MID_MARKET_ROOFTOP_MAX; // MM groups span 2-6 rooftops (v2)
     // Tally each MM group's rooftop ownership across pods (keyed by normalized name).
     const groupPodTally = new Map<string, number[]>();
 
@@ -183,6 +183,24 @@ async function main(): Promise<void> {
     const aggregated = aggregate(allRecords, labels);
     // Attach the canonical group target list (computed once; not record-derived).
     aggregated.segmentation.groups = dealerGroupRows;
+
+    // Top-150 spans ALL regions (not just the US relevant base). Computed over every
+    // fetched record so the dashboard can show the full strategic footprint.
+    const top150 = { rooftops: 0, companies: 0, franchise: 0, independent: 0 };
+    const top150Ids = new Set<string>();
+    let top150Missing = 0;
+    for (const r of allRecords) {
+      if (r.sg !== 'TOP_150') continue;
+      top150.rooftops++;
+      if (r.td === 'Franchise') top150.franchise++;
+      else if (r.td === 'Independent') top150.independent++;
+      const key = r.oi || r.gi;
+      if (key) top150Ids.add(key);
+      else top150Missing++;
+    }
+    top150.companies = top150Ids.size + top150Missing;
+    aggregated.segmentation.top150AllRegions = top150;
+
     aggregated.segmentation.smbGt50 = smbGt50;
     aggregated.segmentation.smbPodGt50 = smbPodGt50;
     aggregated.segmentation.smbPodLe50 = smbPodLe50;
@@ -201,7 +219,7 @@ async function main(): Promise<void> {
     console.log(`  Independent TAM:   ${summaries.independentTAM.rooftops.toLocaleString()} rooftops`);
     const seg = aggregated.segmentation.bySegment;
     console.log('  ── AOP Segmentation (rooftops) ──');
-    console.log(`  SMB ${seg.SMB.rooftops.toLocaleString()} | MM-single ${seg.MM_SINGLE.rooftops.toLocaleString()} | MM-group ${seg.MM_GROUP.rooftops.toLocaleString()} | EntA ${seg.ENT_A.rooftops.toLocaleString()} | EntB ${seg.ENT_B.rooftops.toLocaleString()} | EntC ${seg.ENT_C.rooftops.toLocaleString()} | Unsized ${seg.UNSIZED.rooftops.toLocaleString()}`);
+    console.log(`  SMB ${seg.SMB.rooftops.toLocaleString()} | MM-single ${seg.MM_SINGLE.rooftops.toLocaleString()} | MM-group(2-6) ${seg.MM_GROUP.rooftops.toLocaleString()} | EntA(7-10) ${seg.ENT_A.rooftops.toLocaleString()} | EntB(11-15) ${seg.ENT_B.rooftops.toLocaleString()} | EntC(16+) ${seg.ENT_C.rooftops.toLocaleString()} | Top150(US) ${seg.TOP_150.rooftops.toLocaleString()} | Top150(all) ${top150.rooftops.toLocaleString()} | Unsized ${seg.UNSIZED.rooftops.toLocaleString()}`);
     console.log('─────────────────────────────────────────────────────────\n');
 
     // Sanity check: warn if numbers are way off from expected

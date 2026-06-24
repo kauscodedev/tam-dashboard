@@ -15,14 +15,15 @@ type FilterConfig = {
 }
 
 // AOP segment codes → display order + labels (shared with the segmentation section).
-const SEGMENT_ORDER = ['SMB', 'MM_SINGLE', 'MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'UNSIZED']
+const SEGMENT_ORDER = ['SMB', 'MM_SINGLE', 'MM_GROUP', 'ENT_A', 'ENT_B', 'ENT_C', 'TOP_150', 'UNSIZED']
 const SEGMENT_LABEL: Record<string, string> = {
   SMB: 'SMB',
   MM_SINGLE: 'Mid Market — Single',
-  MM_GROUP: 'Mid Market — Group',
-  ENT_A: 'Enterprise-A',
-  ENT_B: 'Enterprise-B',
-  ENT_C: 'Enterprise-C (Top 150)',
+  MM_GROUP: 'Mid Market — Group (2–6)',
+  ENT_A: 'Enterprise-A (7–10)',
+  ENT_B: 'Enterprise-B (11–15)',
+  ENT_C: 'Enterprise-C (16+)',
+  TOP_150: 'Top 150',
   UNSIZED: 'Unsized',
 }
 

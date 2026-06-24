@@ -51,6 +51,8 @@ export function applyFilters(
     segmentation: {
       ...result.segmentation,
       groups: data.segmentation.groups,
+      // Top-150 is region-independent (all regions, computed at sync) — carry it through.
+      top150AllRegions: data.segmentation.top150AllRegions,
       smbGt50: data.segmentation.smbGt50,
       smbPodGt50: data.segmentation.smbPodGt50,
       smbPodLe50: data.segmentation.smbPodLe50,

@@ -220,13 +220,17 @@ for the HubSpot `Market_segment` property mirroring it):
 rollup, falling back to member-record count when the rollup is 0/missing. **Exception:** a
 `dealership_rank = "Top 150"` group is always a Group regardless of rooftop count.
 
-- **Group** (sized by canonical rooftops): `Top 150` → `ENT_C` (overrides all); `> 15` → `ENT_B`;
-  `11–15` → `ENT_A`; `2–10` → `MM_GROUP`. Group type `gt` is the majority of `td` across members
-  (50/50 tie → IGD). MM groups get a rooftop sub-sector `ss` — two bands, `2-5` and `6-10` (see
-  `SubSector`/`SUBSECTORS`).
+- **Group** (sized by canonical rooftops, v2 bands): `Top 150` → `TOP_150` (overrides all);
+  `> 15` → `ENT_C` (16+); `11–15` → `ENT_B`; `7–10` → `ENT_A`; `2–6` → `MM_GROUP` (single band, no
+  sub-sectors). Group type `gt` is the majority of `td` across members (50/50 tie → IGD).
 - **Single** (sized by dealership type + used cars): missing `uc` → `UNSIZED` (incl. unsized
   franchise); **Franchise** (`td = "Franchise"`) → **always `MM_SINGLE`** regardless of `uc`;
-  **Independent / other** `uc <= 100` → `SMB`, `> 100` → `MM_SINGLE`. `gt`/`ss` are null for singles.
+  **Independent / other** `uc <= 100` → `SMB`, `> 100` → `MM_SINGLE`. `gt` is null for singles.
+
+**Top 150 spans ALL regions.** Unlike every other segment (US relevant base), `TOP_150` is counted
+across all countries and any website status — `scripts/sync.ts` computes `segmentation.top150AllRegions`
+(rooftops/companies/Fr/Ind over *all* fetched records) and `applyFilters` preserves it region-independently.
+The Top-150 metric card reads that; the matrix row shows the US-base `TOP_150` for sum integrity.
 
 Franchise singles are always Mid Market (never SMB) — franchise rooftops monetize differently — so
 **SMB is independent-only** among singles. `SMB_USED_CAR_MAX = 100` therefore applies only to
@@ -250,11 +254,10 @@ tagging) — `sg`/`gt`/`ss` carry segmentation client-side and the group list li
 
 **Franchise vs Independent split:** every segment card and the **TAM Segmentation Matrix** table
 show a Franchise/Independent split. Singles split by record `td` (filter-responsive); groups split
-by canonical group type GFD↔Franchise / IGD↔Independent (region-independent). The matrix and the
-MM-Group cards bucket groups by **2–5** and **6–10** rooftops; this matches the `mmSubSectors`
-`2-5`/`6-10` bands (the framework's 2–10 Mid Market group band — 1-rooftop "groups" are singles). The
-card-level Fr/Ind splits are recomputed client-side in `app/page.tsx` (the `seg` memo) from the baked
-`sg`/`gt`/`ss` tags.
+by canonical group type GFD↔Franchise / IGD↔Independent (region-independent). Mid Market is a single
+group band (2–6 rooftops); the MM-Total card adds a **rooftop-level total** row split Fr/Ind across
+MM-Single + MM-Group. The card-level Fr/Ind splits are recomputed client-side in `app/page.tsx`
+(the `seg` memo) from the baked `sg`/`gt` tags.
 
 **Sync-time pre-computed splits (NOT client-derived):** some splits need *exact* counts that a
 filtered client record set cannot reconstruct, so `scripts/sync.ts` computes them once at sync
@@ -263,13 +266,15 @@ filtered client record set cannot reconstruct, so `scripts/sync.ts` computes the
 - `smbGt50` — SMB dealers with >50 used cars (aggregate Fr/Ind/rooftops).
 - `smbPodGt50` / `smbPodLe50` — per-pod SMB Fr/Ind breakdown for >50 / ≤50 used cars (array indexed by `PODS` order).
 - `smbStageGt50` / `smbStageLe50` — SMB Fr/Ind by lifecycle (GD Level) stage for >50 / ≤50 used cars.
-- `mmRooftopPodSplit` — MM_GROUP per-rooftop-count (`"2".."10"`) per-pod Fr/Ind split. Each group is
+- `mmRooftopPodSplit` — MM_GROUP per-rooftop-count (`"2".."6"`) per-pod Fr/Ind split. Each group is
   assigned to its **plurality-of-rooftop-ownership** pod so the numbers reconcile with the group-count rows.
+- `top150AllRegions` — Top-150 segment metric over ALL regions (rooftops/companies/Fr/Ind).
 
 The `seg` memo *consumes* these fields; it does not recompute them.
 
-**UI surfaces:** a **Mid Market — Total** card rolls up MM_SINGLE + MM_GROUP (2–5 and 6–10). Each
-MM-Group card embeds a "By rooftop" breakdown table (`MMRooftopCountTable`, range starts at 2 rooftops,
+**UI surfaces:** a **Mid Market — Total** card rolls up MM_SINGLE + MM_GROUP (2–6) with a rooftop-level
+Fr/Ind total row. A dedicated **Top 150** card shows the all-regions metric. The single MM-Group (2–6)
+card embeds a "By rooftop" breakdown table (`MMRooftopCountTable`, range 2–6,
 fed by `mmRooftopPodSplit`), and the SMB card / SMB Deep Dive has a >50 / ≤50 used-car split (fed by
 `smbStage*`/`smbPod*`). After the franchise re-tag the SMB **>50** band is effectively
 Independent-only (franchise singles >50 are now Mid Market). These are presentations of the
@@ -293,21 +298,24 @@ Update `lib/pods.ts` when the roster changes — no re-sync needed for roster ed
 addition of the `ow` field required a sync (and pod-split pre-computation is keyed off `OWNER_TO_POD`
 order at sync time, so adding/reordering pods does require a re-sync to refresh those fields).
 
-Boundary resolutions (the framework's open items): **all franchise singles are Mid Market**
-(never SMB); SMB is independent/untyped singles with ≤100 used cars; an unsized franchise single
-stays Unsized; a group needs **≥2 rooftops** (1-rooftop "groups" are singles); Enterprise-A is
-11–15 and Enterprise-B is 16+; MM sub-sectors (`2-5`/`6-10`) apply to both GFD and IGD; 50/50 type
-ties → IGD. Segment counts cover the **relevant base** (so they sum to Relevant TAM rooftops), not
-the known-domain base. A global **AOP Segment** filter (`FilterState.segment`, key `sg`) was added.
+Boundary resolutions (v2): **all franchise singles are Mid Market** (never SMB); SMB is
+independent/untyped singles with ≤100 used cars; an unsized franchise single stays Unsized; a group
+needs **≥2 rooftops** (1-rooftop "groups" are singles). Group rooftop bands: **MM-Group 2–6**,
+**Enterprise-A 7–10**, **Enterprise-B 11–15**, **Enterprise-C 16+**, and **Top 150** (rank, all
+regions, overrides). 50/50 type ties → IGD. Segment counts cover the **relevant US base** (sum to
+Relevant TAM rooftops) — except **Top 150 spans all regions**. A global **AOP Segment** filter
+(`FilterState.segment`, key `sg`) covers all segments incl. `TOP_150`.
 Validated against live HubSpot (relevant US base): **all** franchise singles ≤100 cars = 5,371
 (→ MM-Single), franchise singles with no car count = 683 (→ Unsized), independent singles ≤100 =
 33,823 (→ SMB).
 
 **HubSpot `Market_segment` write-back:** `lib/hubspot/writeMarketSegment.ts` maps each company's
-baked `sg`/`ss` → a `market_segment` enum value and batch-updates HubSpot. Called gated at the end
-of `scripts/sync.ts` — off unless `MARKET_SEGMENT_WRITEBACK=dry-run|write` (scope `relevant`
-default / `all`). Runs after the blob write in its own try/catch so it can't fail the dashboard
-sync. Needs the property created + a write-scoped PAT. Full guide: `docs/market-segment-hubspot-spec.md`.
+baked `sg` → a `market_segment` enum value (`smb`, `mm_single`, `mm_group`, `enterprise_a/b/c`,
+`top_150`, `unsized`) and batch-updates HubSpot. Called gated at the end of `scripts/sync.ts` — off
+unless `MARKET_SEGMENT_WRITEBACK=dry-run|write` (scope `relevant` default / `all`). **Top-150 members
+are always tagged regardless of region/website** (region exception in the write-back). Runs after the
+blob write in its own try/catch so it can't fail the dashboard sync. Needs the property created + a
+write-scoped PAT. Full guide: `docs/market-segment-hubspot-spec.md`.
 
 ## Global Filters
 

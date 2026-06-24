@@ -23,20 +23,19 @@ export interface MinifiedRecord {
   // ── Baked TAM-segmentation tags (computed at sync via tagSegments) ──
   sg: SegmentCode | null; // top-level AOP segment
   gt: GroupType | null;   // group dealership type (GFD/IGD), groups only
-  ss: SubSector | null;   // Mid Market group rooftop sub-sector, groups only
 }
 
-// ── TAM Segmentation framework ────────────────────────────────────────────────
+// ── TAM Segmentation framework (v2) ───────────────────────────────────────────
 export type SegmentCode =
-  | 'SMB'        // single dealer, <= 100 used cars
-  | 'MM_SINGLE'  // single dealer, > 100 used cars
-  | 'MM_GROUP'   // group, <= 10 rooftops
-  | 'ENT_A'      // group, 11-15 rooftops
-  | 'ENT_B'      // group, 16+ rooftops (excl. Top 150)
-  | 'ENT_C'      // Top 150 group
-  | 'UNSIZED';   // single dealer with no used-car count
+  | 'SMB'        // independent/untyped single, <= 100 used cars
+  | 'MM_SINGLE'  // any franchise single, or independent single > 100 used cars
+  | 'MM_GROUP'   // group, 2-6 rooftops
+  | 'ENT_A'      // group, 7-10 rooftops
+  | 'ENT_B'      // group, 11-15 rooftops
+  | 'ENT_C'      // group, 16+ rooftops (excl. Top 150)
+  | 'TOP_150'    // Top 150 group (rank-based; counted across ALL regions)
+  | 'UNSIZED';   // single with no used-car count
 export type GroupType = 'GFD' | 'IGD';
-export type SubSector = '2-5' | '6-10';
 
 /** One dealer-group record from the Dealership Group Names custom object. */
 export interface DealerGroup {
@@ -53,7 +52,7 @@ export interface CountMetric {
 /** One dealer group as an AOP planning/target row (group counted as one account). */
 export interface DealerGroupRow {
   name: string;        // display name
-  segment: SegmentCode; // MM_GROUP | ENT_A | ENT_B | ENT_C
+  segment: SegmentCode; // MM_GROUP | ENT_A | ENT_B | ENT_C | TOP_150
   type: GroupType;     // GFD / IGD
   rooftops: number;    // canonical group size (group-object rollup, or member fallback)
   rank: string;        // "Top 150" or ""
@@ -68,12 +67,13 @@ export interface SegmentationData {
   accounts: Record<SegmentCode, number>;
   /** Mid Market group split by dealership type. */
   mmGroupByType: Record<GroupType, CountMetric>;
-  /** Mid Market group rooftop sub-sectors, per group type (rows for a BreakdownTable). */
-  mmSubSectors: Record<GroupType, GroupRow[]>;
   /** Enterprise tiers A/B/C as breakdown rows. */
   enterpriseTiers: GroupRow[];
   /** Canonical dealer-group target list (computed at sync; preserved across filters). */
   groups: DealerGroupRow[];
+  /** Top-150 segment metric computed across ALL regions (not just the US relevant base);
+   *  computed at sync and preserved across client filters (region-independent). */
+  top150AllRegions?: { rooftops: number; companies: number; franchise: number; independent: number };
   /** SMB dealers with >50 used cars (aggregate). Computed at sync before uc is dropped. */
   smbGt50?: { franchise: number; independent: number; rooftops: number };
   /** Per-pod SMB breakdown for >50 used cars. Index matches PODS order. */
@@ -86,7 +86,7 @@ export interface SegmentationData {
   smbStageLe50?: Record<string, { franchise: number; independent: number }>;
   /**
    * Per-rooftop-count pod breakdown for MM_GROUP records.
-   * Key = rooftop count (as string "1".."10"); value = array indexed by pod.
+   * Key = rooftop count (as string "2".."6"); value = array indexed by pod.
    * Computed at sync before gn is dropped.
    */
   mmRooftopPodSplit?: Record<string, Array<{ franchise: number; independent: number }>>;

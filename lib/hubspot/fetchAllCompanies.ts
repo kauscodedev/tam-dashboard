@@ -68,7 +68,6 @@ function minifyRecord(props: RawProperties, hubspotId?: string): MinifiedRecord 
     // Segment tags are baked later by tagSegments(); default to null.
     sg: null,
     gt: null,
-    ss: null,
   };
 
   for (const [hsKey, minKey] of Object.entries(FIELD_MAP) as [HubSpotFieldKey, string][]) {

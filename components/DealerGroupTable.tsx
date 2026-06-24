@@ -6,23 +6,26 @@ import { ChevronDown, Download, Search } from 'lucide-react'
 import { downloadCsv } from '@/lib/exportCsv'
 
 const SEGMENT_LABEL: Record<string, string> = {
-  MM_GROUP: 'Mid Market',
-  ENT_A: 'Enterprise-A',
-  ENT_B: 'Enterprise-B',
-  ENT_C: 'Enterprise-C',
+  MM_GROUP: 'Mid Market (2–6)',
+  ENT_A: 'Enterprise-A (7–10)',
+  ENT_B: 'Enterprise-B (11–15)',
+  ENT_C: 'Enterprise-C (16+)',
+  TOP_150: 'Top 150',
 }
 
 const SEGMENT_BADGE: Record<string, string> = {
   MM_GROUP: 'bg-slate-100 text-slate-700',
   ENT_A: 'bg-sky-100 text-sky-800',
   ENT_B: 'bg-indigo-100 text-indigo-800',
-  ENT_C: 'bg-emerald-100 text-emerald-800',
+  ENT_C: 'bg-violet-100 text-violet-800',
+  TOP_150: 'bg-emerald-100 text-emerald-800',
 }
 
 type SegmentFilter = 'ALL' | SegmentCode
 
 const FILTERS: { key: SegmentFilter; label: string }[] = [
   { key: 'ALL', label: 'All groups' },
+  { key: 'TOP_150', label: 'Top 150' },
   { key: 'ENT_C', label: 'Enterprise-C' },
   { key: 'ENT_B', label: 'Enterprise-B' },
   { key: 'ENT_A', label: 'Enterprise-A' },
